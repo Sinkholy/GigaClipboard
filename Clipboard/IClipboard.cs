@@ -1,4 +1,8 @@
-﻿namespace Core
+﻿using System.ComponentModel.DataAnnotations;
+using System.IO;
+using System.Windows.Media.Imaging;
+
+namespace Core
 {
 	/// <summary>
 	/// Класс реализующий этот интерфейс должен предоставлять
@@ -11,41 +15,95 @@
 		/// </summary>
 		public event Action NewClipboardDataObtained;
 
-		/// <summary>
-		/// Возвращает данные находящиеся в буфере обмена в данный момент.
-		/// </summary>
-		/// <returns>Данные находящиеся в буфере обмена.</returns>
-		public ClipboardData GetData();
-		/// <summary>
-		/// Устанавливает данные в буфер обмена.
-		/// </summary>
-		/// <param name="data">Данные которые необходимо установить в буфер обмена.</param>
-		public void SetData(ClipboardData data);
-		/// <summary>
-		/// Устанавливает данные в буфер обмена.
-		/// </summary>
-		/// <param name="data">Данные которые необходимо установить в буфер обмена.</param>
-		/// <param name="type">Тип данных.</param>
-		public void SetData(object? data, DataType type);
+		public DataType GetCurrentDataType();
+		public ClipboardTextData? GetText();
+		public ClipboardAudioStreamData? GetAudioStream();
+		public ClipboardImageData? GetImage();
+		public ClipboardFilesPathesData? GetFileDrop();
 
-		/// <summary>
-		/// Тип данных полученных из буфера обмена.
-		/// </summary>
-		/// <remarks>
-		/// Так как из буфера обмена данные приходят в упакованном в object виде
-		/// это перечисление помогает понять какого типа данные были получены.
-		/// </remarks>
-		public enum DataType : byte
+		public void SetText(ClipboardTextData data);
+		public void SetText(string value, ClipboardTextData.TextFormats format);
+		public void SetAudio(ClipboardAudioStreamData data);
+		public void SetAudio(Stream audioStream);
+		public void SetAudio(byte[] audioBytes);
+		public void SetImage(ClipboardImageData data);
+		public void SetImage(BitmapSource image);
+		public void SetFilesPathes(ClipboardFilesPathesData data);
+		public void SetFilesPathes(IReadOnlyCollection<string> pathes);
+
+		public enum DataType
 		{
-			// TODO: заполнить в соответствии с возможными типами данных.
+			Text,
+			Image,
+			AudioStream,
+			FileDrop,
+			Unknown
 		}
-		/// <summary>
-		/// Представляет набор данных находящиеся в буфере обмена и тип этих данных.
-		/// </summary>
-		public struct ClipboardData
+		public class ClipboardData<T>
 		{
-			public object? Data;
-			public DataType Type;
+			public ClipboardData(T data, DataType dataType)
+			{
+				Data = data;
+				DataType = dataType;
+			}
+
+			public T Data { get; init; }
+			public DataType DataType { get; init; }
+		}
+		public class ClipboardTextData : ClipboardData<string>
+		{
+			public ClipboardTextData(string text, TextFormats format)
+				: base(text, DataType.Text)
+			{
+				TextFormat = format;
+			}
+
+			public TextFormats TextFormat { get; init; }
+
+			public enum TextFormats
+			{
+				Text,
+				UnicodeText,
+				RTF,
+				Html,
+				CSV,
+				Xaml
+			}
+		}
+		public class ClipboardAudioStreamData : ClipboardData<Stream>
+		{
+			public ClipboardAudioStreamData(Stream data, DataType dataType)
+				: base(data, dataType)
+			{
+			}
+		}
+		public class ClipboardImageData : ClipboardData<BitmapSource>
+		{
+			public ClipboardImageData(BitmapSource data, DataType dataType)
+				: base(data, dataType)
+			{
+			}
+		}
+		public class ClipboardFilesPathesData : ClipboardData<IReadOnlyCollection<string>>
+		{
+			public ClipboardFilesPathesData(IReadOnlyCollection<string> data, DataType dataType)
+				: base(data, dataType)
+			{
+			}
+
+			public class FileData
+			{
+				public FileData(string filePath, string fileExtension, string fileName)
+				{
+					FilePath = filePath;
+					FileExtension = fileExtension;
+					FileName = fileName;
+				}
+
+				public string FilePath { get; init; }
+				public string FileName { get; init; }
+				public string FileExtension { get; init; }
+			}
 		}
 	}
 }
