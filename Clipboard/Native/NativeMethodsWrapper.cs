@@ -7,39 +7,25 @@ namespace Clipboard.Native
 	/// </summary>
 	internal static class NativeMethodsWrapper
 	{
-		const int MillisecondsTimeoutBetweenTries = 100; // TAI: возможно стоит вынести таймаут в параметры каждого конкретного метода?
-
 		/// <summary>
 		/// Подписывает обработчик окна на получение уведомлений об обновлении содержимого системного буфера обмена.
 		/// </summary>
 		/// <remarks>
 		/// Дополнительную информацию можно найти в описании <see cref="NativeMethods.AddClipboardFormatListener(IntPtr)"/>.
 		/// </remarks>
-		/// <param name="windowhandler">Обработчик окна которое будет получать уведомления.</param>
-		/// <param name="retryCount">Количество попыток подписаться при неудаче.</param>
+		/// <param name="windowHandler">Обработчик окна которое будет получать уведомления.</param>
+		/// <param name="errorCode">Код ошибки. Если операция прошла успешно, будет равен <see langword="null"/>.</param>
 		/// <returns>
 		///		<see langword="true"/> если окно было подписано на уведомления, иначе <see langword="false"/>.
 		///	</returns>
-		internal static bool SubscribeWindowToClipboardUpdates(IntPtr windowhandler, uint retryCount = 5)
+		internal static bool SubscribeWindowToClipboardUpdates(IntPtr windowHandler, out int? errorCode)
 		{
-			byte currentTry = 0;
-			bool isSubscribed;
-			while (true)
-			{
-				isSubscribed = NativeMethods.AddClipboardFormatListener(windowhandler);
-				if (isSubscribed)
-				{
-					break;
-				}
-				else if (currentTry == retryCount)
-				{
-					break;
-				}
-				Thread.Sleep(MillisecondsTimeoutBetweenTries);
+			bool subscribed = NativeMethods.AddClipboardFormatListener(windowHandler);
+			errorCode = subscribed
+					? null
+					: GetLastNativeError();
 
-				currentTry++;
-			}
-			return isSubscribed;
+			return subscribed;
 		}
 		/// <summary>
 		/// Отписывает обработчик окна от получения события обновления системного буфера обмена.
@@ -48,30 +34,18 @@ namespace Clipboard.Native
 		/// Дополнительную информацию можно найти в описании <see cref="NativeMethods.RemoveClipboardFormatListener(IntPtr)"/>.
 		/// </remarks>
 		/// <param name="windowHandler">Обработчик окна которое будет отписано от уведомлений.</param>
-		/// <param name="retryCount">Количество попыток отписаться при неудаче.</param>
+		/// <param name="retryCount">Количество попыток отписаться при неудаче.</param> 
 		/// <returns>
 		///		<see langword="true"/> если окно было отписано, иначе <see langword="false"/>.
 		///	</returns>
-		internal static bool UnsubscribeWindowFromClipboardUpdates(IntPtr windowHandler, uint retryCount = 5)
+		internal static bool UnsubscribeWindowFromClipboardUpdates(IntPtr windowHandler, out int? errorCode) // TODO: документация.
 		{
-			byte currentTry = 0;
-			bool isUnsubscribed;
-			while (true)
-			{
-				isUnsubscribed = NativeMethods.RemoveClipboardFormatListener(windowHandler);
-				if (isUnsubscribed)
-				{
-					break;
-				}
-				else if (currentTry == retryCount)
-				{
-					break;
-				}
-				Thread.Sleep(MillisecondsTimeoutBetweenTries);
+			bool unsubscribed = NativeMethods.RemoveClipboardFormatListener(windowHandler);
+			errorCode = unsubscribed
+					? null
+					: GetLastNativeError();
 
-				currentTry++;
-			}
-			return isUnsubscribed;
+			return unsubscribed;
 		}
 		/// <summary>
 		/// Получает эксклюзивный доступ к системному буферу обмена для окна представленного обработчиком <paramref name="windowHandler"/>.
@@ -89,27 +63,16 @@ namespace Clipboard.Native
 		/// <returns>
 		///		<see langword="true"/> если эксклюзивный доступ получен, иначе <see langword="false"/>.
 		/// </returns>
-		internal static bool GetExclusiveClipboardControl(IntPtr windowHandler, uint retryCount = 5)
+		internal static bool GetExclusiveClipboardControl(IntPtr windowHandler, out int? errorCode)
 		{
-			uint currentTry = 0;
-			bool controlGranted;
-			while (true)
-			{
-				controlGranted = NativeMethods.OpenClipboard(windowHandler);
-				if (controlGranted)
-				{
-					break;
-				}
-				else if (currentTry == retryCount)
-				{
-					break;
-				}
+			bool controlGranted = NativeMethods.OpenClipboard(windowHandler);
+			errorCode = controlGranted
+					? null
+					: GetLastNativeError();
 
-				Thread.Sleep(MillisecondsTimeoutBetweenTries);
-				currentTry++;
-			}
 			return controlGranted;
 		}
+
 		/// <summary>
 		/// Возвращает эксклюзивный доступ к системному буферу обмена.
 		/// </summary>
@@ -120,34 +83,54 @@ namespace Clipboard.Native
 		/// <returns>
 		///		<see langword="true"/> если эксклюзивный доступ возвращен, иначе <see langword="false"/>.
 		/// </returns>
-		internal static bool ReturnExclusiveClipboardControl(uint retryCount = 5)
+		internal static bool ReturnExclusiveClipboardControl(out int? errorCode)
 		{
-			uint currentTry = 0;
-			bool controlReturned;
-			while (true)
-			{
-				controlReturned = NativeMethods.CloseClipboard();
-				if (controlReturned)
-				{
-					break;
-				}
-				else if (currentTry == retryCount)
-				{
-					break;
-				}
-				Thread.Sleep(MillisecondsTimeoutBetweenTries);
+			bool controlReturned = NativeMethods.CloseClipboard();
+			errorCode = controlReturned
+					? null
+					: GetLastNativeError();
 
-				currentTry++;
-			}
 			return controlReturned;
 		}
 		/// <summary>
 		/// Возвращает количество форматов в которых представлены данные находящиеся в буфере обмена.
 		/// </summary>
 		/// <returns>Количество форматов данных.</returns>
-		internal static int CountPresentedFormats()
+		internal static bool CountPresentedFormats(out int formatsCount, out int? errorCode)
 		{
-			return NativeMethods.CountClipboardFormats();
+			//https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-countclipboardformats#return-value
+			const int ZeroFormats = 0;
+			const int ErrorId = 0;
+
+			bool result;
+			formatsCount = NativeMethods.CountClipboardFormats();
+			if (formatsCount is ZeroFormats or ErrorId) // TODO: стоит ли инвертировать этот If-Else?
+														// Эта мысль возникла в контексте "Первый вариант - верный и ожидаемый".
+			{
+				// Следуя документации Microsoft метод CountClipboardFormats
+				// возвращает 0 в двух случаях:
+				// a) Количество форматов равно нулю, то есть данные в буфере отсутствуют.
+				// b) Произошла ошибка при обработке запроса.
+				// Так как оба случая идентифицируются одним и тем же значением
+				// приходится явно выяснять у системы произошла ли ошибка в случае получения этого значения.
+				if (IsErrorOccured(out errorCode))
+				{
+					// Произошла ошибка.
+					result = false;
+				}
+				else
+				{
+					// Форматов действительно 0.
+					result = true;
+				}
+			}
+			else
+			{
+				result = true;
+				errorCode = null;
+			}
+
+			return result;
 		}
 		/// <summary>
 		/// Получает коллекцию имён форматов в которых представлены данные в буфере обмена.
@@ -157,42 +140,58 @@ namespace Clipboard.Native
 		/// иначе результатом выполнения функции будет пустая коллекция;
 		/// </remarks>
 		/// <returns>Имена форматов данных или пустая коллекция при ошибке.</returns>
-		internal static IReadOnlyCollection<string> GetPresentedFormats()
+		internal static bool GetPresentedFormats(out IReadOnlyCollection<string>? formats, out int? errorCode)
 		{
 			const int DefaultFormatId = 0; // https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumclipboardformats#parameters
 			const int LastFormatId = 0; // https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumclipboardformats#return-value
 			const int ErrorId = 0; // https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumclipboardformats#return-value
 
-			List<string> result = new(10);
-
+			List<string> formatsFound = new(10);
+			bool result;
 			uint currentFormatId = DefaultFormatId;
 			while (true)
 			{
 				currentFormatId = GetNextFormatId(currentFormatId);
+				// Следуя документации Microsoft метод EnumClipboardFormats
+				// возвращает 0 в случаях:
+				// a) Больше нет форматов для перечисления.
+				// b) Произошла ошибка при обработке запроса.
+				// Так как оба случая идентифицируются одним и тем же значением
+				// приходится явно выяснять у системы произошла ли ошибка в случае получения этого значения.
 				if (currentFormatId is LastFormatId or ErrorId)
 				{
-					if (IsErrorOccured(out int errorId))
+					if (IsErrorOccured(out errorCode))
 					{
-						// TODO: заготовка под обработку ошибок.
-						// Необходимо продумать то как обрабатывать и\или 
-						// сообщать об ошибках и стоит ли вообще это делать.
+						// Произошла ошибка.
+						result = false;
+					}
+					else
+					{
+						// Больше нет форматов для перечисления.
+						result = true;
 					}
 					break;
 				}
-
-				if (TryGetFormatName(currentFormatId, out string formatName))
-				{
-					result.Add(formatName);
-				}
 				else
 				{
-					// TODO: нужно решить как поступать в случае если имя формато не было найдено.
-					// В данный момент в результат просто добавляется числовой идентификатор формата,
-					// но это никак не отражено ни в сигнатуре метода ни в его заголовочном комментарии.
-					result.Add(currentFormatId.ToString());
+					if (TryGetFormatName(currentFormatId, out string? formatName, out int? formatNameSearchErrorCode))
+					{
+						formatsFound.Add(formatName);
+					}
+					else
+					{
+						// Мы попадаем сюда с ошибкой - нужно ли её логировать?
+						// TODO: нужно решить как поступать в случае если имя формато не было найдено.
+						// В данный момент в результат просто добавляется числовой идентификатор формата,
+						// но это никак не отражено ни в сигнатуре метода ни в его заголовочном комментарии.
+						formatsFound.Add(currentFormatId.ToString());
+					}
 				}
 			}
 
+			formats = result
+				? formatsFound
+				: null;
 			return result;
 
 			static uint GetNextFormatId(uint currentFormatId)
@@ -208,34 +207,52 @@ namespace Clipboard.Native
 		/// <returns>
 		/// <see langword="true"/> если имя формата было найдено, иначе <see langword="false"/>.
 		/// </returns>
-		internal static bool TryGetFormatName(uint formatId, out string formatName)
+		internal static bool TryGetFormatName(uint formatId, out string? formatName, out int? errorCode)
 		{
-			// При проблемах с производительностью стоит рассмотреть вариант замены инициализации массива символов
-			// на получение этого же массива из пула объектов ArrayPool<T>.
+			const int FormatNameErrorId = 0;
 			const char EmptyChar = '\0';
 			const int MaxFormatNameLength = 50; // TODO: я даже не знаю сколько запаса здесь стоит брать.
 
-			if (PredefinedFormats.TryGetFormatById(formatId, out string systemFormat))
+			errorCode = null;
+			bool result;
+
+			// Документация метода GetClipboardFormatName гласит, что параметром представляющим
+			// идентификатор формата ([in] format) не должны передаваться идентификаторы предопреленных
+			// форматов. https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getclipboardformatnamea#parameters
+			// Здесь проверяется является ли формат предпоределенным системой.
+			if (PredefinedFormats.TryGetFormatById(formatId, out formatName))
 			{
-				formatName = systemFormat;
-				return true;
+				result = true;
 			}
 			else
 			{
+				// При проблемах с производительностью стоит рассмотреть вариант замены инициализации массива символов
+				// на получение этого же массива из пула объектов ArrayPool<T>. (Доступно только в >net core 1.0)
 				var buffer = new char[MaxFormatNameLength];
-				var foundSymbols = NativeMethods.GetClipboardFormatName(formatId, buffer, buffer.Length);
-				var formatNameFound = foundSymbols > 0;
-				if (formatNameFound)
+
+				var foundSymbolsCount = NativeMethods.GetClipboardFormatName(formatId, buffer, buffer.Length);
+				if (foundSymbolsCount is not FormatNameErrorId)
 				{
+					result = true;
 					formatName = new string(buffer).Trim(EmptyChar);
-					return true;
 				}
 				else
 				{
-					formatName = string.Empty;
-					return false;
+					if (IsErrorOccured(out errorCode))
+					{
+						result = false;
+						formatName = null;
+					}
+					else
+					{
+
+						result = true;
+						formatName = string.Empty;
+					}
 				}
 			}
+
+			return result;
 		}
 		/// <summary>
 		/// Очищает системный буфер обмена от содержимого и освобождает ресурсы. 
@@ -248,25 +265,12 @@ namespace Clipboard.Native
 		/// <returns>
 		/// <see langword="true"/> если очищение произведено, иначе <see langword="false"/>.
 		/// </returns>
-		internal static bool ClearClipboard(uint retryCount = 5)
+		internal static bool ClearClipboard(out int? errorCode)
 		{
-			uint currentTry = 0;
-			bool isCleared;
-			while (true)
-			{
-				isCleared = NativeMethods.EmptyClipboard();
-				if (isCleared)
-				{
-					break;
-				}
-				else if (currentTry == retryCount)
-				{
-					break;
-				}
-				Thread.Sleep(MillisecondsTimeoutBetweenTries);
-
-				currentTry++;
-			}
+			bool isCleared = NativeMethods.EmptyClipboard();
+			errorCode = isCleared
+				? null
+				: GetLastNativeError();
 			return isCleared;
 		}
 		/// <summary>
@@ -274,31 +278,48 @@ namespace Clipboard.Native
 		/// к нему.
 		/// </summary>
 		/// <returns>Идентификатор окна обладающего эксклюзивным доступом к системному буферу обмена.</returns>
-		internal static IntPtr GetWindowWithExclusiveControl()
+		internal static bool GetWindowWithExclusiveControl(out IntPtr? window, out int? errorCode)
 		{
-			return NativeMethods.GetOpenClipboardWindow();
+			IntPtr NoWindow = IntPtr.Zero;
+			IntPtr EmptyWindow = IntPtr.Zero;
+
+			errorCode = null;
+			bool windowFound;
+			window = NativeMethods.GetOpenClipboardWindow();
+			// https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getopenclipboardwindow#return-value
+			// В документации Microsoft указано, что функция GetOpenClipboardWindow возвращает null в случаях:
+			// a) Контроль свободен - ни одно окно не обладает эксклюзивным доступом к буферу обмена.
+			// b) TaskOwnedControl - окно получившее эксклюзивный доступ к буферу обмена в параметрах
+			// вызова функции OpenClipboard указало Null как параметр-идентификатор. https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-openclipboard#parameters
+			bool taskOwnedControl = window == EmptyWindow;
+			bool controlIsFree = window == NoWindow;
+			if (taskOwnedControl || controlIsFree)
+			{
+				// Т.к. 0 так же может означать возникновение ошибки то проверяем этот случай явно.
+				IsErrorOccured(out errorCode);
+				windowFound = false;
+				window = null;
+			}
+			else
+			{
+				windowFound = true;
+			}
+			return windowFound;
 		}
 
 		/// <summary>
 		/// 
 		/// </summary>
-		/// <param name="errorId"></param>
+		/// <param name="errorCode"></param>
 		/// <returns></returns>
-		static bool IsErrorOccured(out int errorId)
+		static bool IsErrorOccured(out int? errorCode)
 		{
-			const int ERROR_SUCCESS = 0;
-
-			errorId = Marshal.GetLastWin32Error();
-			return errorId != ERROR_SUCCESS;
+			errorCode = Marshal.GetLastWin32Error();
+			return errorCode != NativeErrors.ERROR_SUCCESS;
 		}
-		static int GetHRForLastError()
+		static int GetLastNativeError()
 		{
-			return Marshal.GetHRForLastWin32Error();
-		}
-		static Exception? GetExceptionForLastError()
-		{
-			var hresult = Marshal.GetHRForLastWin32Error();
-			return Marshal.GetExceptionForHR(hresult);
+			return Marshal.GetLastWin32Error();
 		}
 
 		/// <summary>
@@ -355,7 +376,7 @@ namespace Clipboard.Native
 				return SystemPredefinedClipboardFormats.ContainsKey(formatId);
 			}
 
-			internal static bool TryGetFormatById(uint formatId, out string formatName)
+			internal static bool TryGetFormatById(uint formatId, out string? formatName)
 			{
 				return SystemPredefinedClipboardFormats.TryGetValue(formatId, out formatName);
 			}

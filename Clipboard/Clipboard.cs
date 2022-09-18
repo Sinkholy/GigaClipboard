@@ -48,11 +48,218 @@ namespace Clipboard
 			// https://docs.microsoft.com/en-us/windows/win32/winmsg/window-features#message-only-windows
 
 			// Подписание окна-слушателя на получение необходимых сообщений.
-			bool windowSubscribed = NativeMethodsWrapper.SubscribeWindowToClipboardUpdates(messageOnlyWindow.Handle);
-			if (!windowSubscribed)
+			SubscribeToClipboardUpdates();
+		}
+		void SubscribeToClipboardUpdates()
+		{
+			const int RetryCount = 5;
+
+			byte currentTry = 0;
+			bool subscribed;
+			while (true)
 			{
-				throw new InicializationException("Не удалось подписаться на событие обновления содержимого " +
+				subscribed = NativeMethodsWrapper.SubscribeWindowToClipboardUpdates(messageOnlyWindow.Handle, out int? errorCode);
+				if (subscribed)
+				{
+					break;
+				}
+				else
+				{
+					// TODO: Логирование ошибки.
+					HandleError(errorCode, out bool errorHandled);
+					if (!errorHandled)
+					{
+						break;
+					}
+					currentTry++;
+				}
+
+				if (currentTry == RetryCount)
+				{
+					break;
+				}
+			}
+
+			if (!subscribed)
+			{
+				throw new InicializationException("Не удалось подписаться на уведомления обновления содержимого " +
 					"системного буфера обмена.");
+			}
+
+			void HandleError(int? errorCode, out bool errorHandled)
+			{
+				errorHandled = false;
+				switch (errorCode)
+				{
+					case NativeErrors.ERROR_INVALID_PARAMETER:
+						// Эта ошибка возникает при попытке повторного подписания одного и того же окна на уведомления.
+						// Мне неизвестно может ли эта ошибка возникать в следствии других действий.
+
+						// Такого происходить не должно, следовательно Assert?
+						break;
+					case NativeErrors.ERROR_INVALID_WINDOW_HANDLE:
+						// Эта ошибка возникала при попытке подписать на уведомления несуществующее окно.
+						// Мне неизвестно может ли эта ошибка возникать в следствии других действий.
+
+						// Попытаться его пересоздать или просто уведомить об исключении?
+					default:
+						// Уведомить о получении непредвиденной ошибки.
+						errorHandled = true;
+						break;
+				}
+			}
+		}
+		void UnsubscribeFromClipboardUpdates()
+		{
+			const int RetryCount = 5;
+
+			byte currentTry = 0;
+			bool unsubscribed;
+			while (true)
+			{
+				unsubscribed = NativeMethodsWrapper.UnsubscribeWindowFromClipboardUpdates(messageOnlyWindow.Handle, out int? errorCode);
+				if (unsubscribed)
+				{
+					break;
+				}
+				else
+				{
+					// TODO: Логирование ошибки.
+					HandleError(errorCode, out bool	errorHandled);
+					if (!errorHandled)
+					{
+						break;
+					}
+					currentTry++;
+				}
+
+				if (currentTry == RetryCount)
+				{
+					break;
+				}
+			}
+
+			if (!unsubscribed)
+			{
+				throw new InicializationException("Не удалось отписаться от уведомлений обновления содержимого " +
+					"системного буфера обмена."); // TODO: здесь не InicExeption
+			}
+
+			void HandleError(int? errorCode, out bool errorHandled)
+			{
+				errorHandled = false;
+				switch (errorCode)
+				{
+					case NativeErrors.ERROR_INVALID_PARAMETER:
+						// Эта ошибка возникала при попытке повторного отписания одного и того же окна от уведомлений.
+						// Мне неизвестно может ли эта ошибка возникать в следствии других действий.
+
+						// Такого происходить не должно, следовательно Assert?
+						break;
+					case NativeErrors.ERROR_INVALID_WINDOW_HANDLE:
+					// Эта ошибка возникала при попытке отписать от уведомлений несуществующее окно.
+					// Мне неизвестно может ли эта ошибка возникать в следствии других действий.
+
+					// Попытаться его пересоздать или просто уведомить об исключении?
+					default:
+						errorHandled = true;
+						break;
+				}
+			}
+		}
+		bool GetExclusiveAccess()
+		{
+			const int RetryCount = 5;
+
+			int currentTry = 0;
+			bool controlGranted;
+			while (true)
+			{
+				controlGranted = NativeMethodsWrapper.GetExclusiveClipboardControl(messageOnlyWindow.Handle, out int? errorCode);
+				if (controlGranted)
+				{
+					break;
+				}
+				else
+				{
+					HandleError(errorCode, out bool errorHandled);
+					if (!errorHandled)
+					{
+						break;
+					}
+					currentTry++;
+				}
+
+				if (currentTry == RetryCount)
+				{
+					break;
+				}
+			}
+
+			return controlGranted;
+
+			void HandleError(int? errorCode, out bool errorHandled)
+			{
+				switch (errorCode)
+				{
+					case NativeErrors.ERROR_ACCESS_DENIED:
+						// При отказе в получении контроля вероятнее всего этот самый контроль занят.
+						// Просто подождём и повторим попытку.
+						Thread.Sleep(100); // TODO: время ожидания.
+						errorHandled = true;
+						break;
+					default:
+						errorHandled = false;
+						break;
+				}
+			}
+		}
+		bool ReturnExclusiveAccess()
+		{
+			const int RetryCount = 5;
+
+			int currentTry = 0;
+			bool controlReturned;
+			while (true)
+			{
+				controlReturned = NativeMethodsWrapper.ReturnExclusiveClipboardControl(out int? errorCode);
+				if (controlReturned)
+				{
+					break;
+				}
+				else
+				{
+					HandleError(errorCode, out bool errorHandled);
+					if (!errorHandled)
+					{
+						break;
+					}
+					currentTry++;
+				}
+
+				if (currentTry == RetryCount)
+				{
+					break;
+				}
+			}
+
+			return controlReturned;
+
+			void HandleError(int? errorCode, out bool errorHandled)
+			{
+				switch (errorCode) // TODO: собрать информацию о возможных ошибках.
+				{
+					case NativeErrors.ERROR_CLIPBOARD_NOT_OPEN:
+						// Контроль не был получен, нет возможности вернуть контроль.
+						// Т.к. это никак не отражается на работе приложения ограничимся
+						// лишь записью в лог.
+						controlReturned = true;
+						errorHandled = true;
+						break;
+					default:
+						errorHandled = false;
+						break;
+				}
 			}
 		}
 
@@ -68,7 +275,7 @@ namespace Clipboard
 		/// </summary>
 		IntPtr WindowsMessagesInterceptor(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
 		{
-			// TODO: необходимо подробнее разобраться в механизме перехвата сообщений.
+			// TAI: необходимо подробнее разобраться в механизме перехвата сообщений.
 			// https://docs.microsoft.com/en-us/windows/win32/winmsg/about-hooks
 			// https://habr.com/ru/company/icl_services/blog/324718/
 			if (msg == ClipboardUpdatedMessageIdentifier)
@@ -123,6 +330,7 @@ namespace Clipboard
 			}
 		}
 
+		#region Data getter's
 		/// <summary>
 		/// Опрашивает буфер обмена на формат текста в котором хранятся данные затем 
 		/// запрашивает данные в соответствующем формате и возвращает их управляющей стороне.
@@ -231,6 +439,9 @@ namespace Clipboard
 								: new ClipboardFilesPathesData(filesPathes as IReadOnlyCollection<string>, DataType.FileDrop);
 
 		}
+		#endregion
+
+		#region Data setter's
 
 		/// <summary>
 		/// Помещает данные в буфер обмена в формате текста инкапсулированном в объекте типа \
@@ -412,30 +623,47 @@ namespace Clipboard
 		{
 			SystemClipboard.SetFileDropList(pathes);
 		}
+		#endregion
 
 		/// <summary>
 		/// Опрашивает системный буфер для получения форматов в которых представленны данных хранящиеся в нём и
 		/// возвращает форматы управляющей стороне.
 		/// </summary>
 		/// <returns>Коллекцию имён форматов в которых представленны данные в системном буфере обмена.</returns>
-		/// <exception cref="ExclusiveControlException">Если не удалось получить эксклюзивный доступ к системному буферу обмена.</exception>
-		IReadOnlyCollection<string> GetPresentedFormats() // TODO: Non-public
+		/// <exception cref="ExclusiveControlException">Если не удалось получить или вернуть эксклюзивный доступ к системному буферу обмена.</exception>
+		IReadOnlyCollection<string> GetPresentedFormats()
 		{
 			// Для опроса буфера обмена необходимо получить эксклюзивный доступ.
-			var controlGranted = NativeMethodsWrapper.GetExclusiveClipboardControl(messageOnlyWindow.Handle);
-			if (!controlGranted)
+			var exclusiveControlGranted = GetExclusiveAccess();
+			if (!exclusiveControlGranted)
 			{
-				throw new ExclusiveControlException("Не удалось получить эксклюзивный " +
-					"контроль над системным буфером обмена.");
+				throw new ExclusiveControlException("Не удалось получить эксклюзивный контроль " +
+					"над системным буфером обмена.");
 			}
-			var result = NativeMethodsWrapper.GetPresentedFormats();
-			NativeMethodsWrapper.ReturnExclusiveClipboardControl();
 
-			return result;
+			if (!NativeMethodsWrapper.GetPresentedFormats(out var formats, out int? errorCode))
+			{
+				// TODO: логирование появления ошибки.
+				formats = Array.Empty<string>();
+			}
+
+			var exclisiveControlReturned = ReturnExclusiveAccess();
+			if (!exclisiveControlReturned)
+			{
+				throw new ExclusiveControlException("Не удалось вернуть эксклюзивный контроль " +
+					"над системным буфером обмена.");
+			}
+
+			return formats;
 		}
 		int GetClipboardFormatsCount()
 		{
-			return NativeMethodsWrapper.CountPresentedFormats();
+			var formatsCounted = NativeMethodsWrapper.CountPresentedFormats(out int formatsCount, out int? errorCode);
+			if (!formatsCounted)
+			{
+				// TODO: логировать ошибку.
+			}
+			return formatsCount;
 		}
 		bool IsFormatPresented(string formatName)
 		{
@@ -453,12 +681,16 @@ namespace Clipboard
 		#region Disposing
 		public void Dispose()
 		{
-			bool windowUnsubscribed = NativeMethodsWrapper.UnsubscribeWindowFromClipboardUpdates(messageOnlyWindow.Handle);
-			if (!windowUnsubscribed)
+			try
+			{
+				UnsubscribeFromClipboardUpdates();
+			}
+			catch (InicializationException) // TODO: другое исключение.
 			{
 				// TODO: ну и что делать если не получилось выписать себя из списка получателей сообщения? 
 				// Как корректно завершить работу приложения?
 			}
+
 			messageOnlyWindow.Dispose();
 			GC.SuppressFinalize(this);
 			isDisposed = true;
