@@ -13,253 +13,21 @@ namespace Clipboard
 {
 	public sealed class Clipboard : IClipboard, IDisposable
 	{
-		const int WM_CLIPBOARDUPDATE = 0x031D; // https://docs.microsoft.com/en-us/windows/win32/dataxchg/wm-clipboardupdate
-		const int ClipboardUpdatedMessageIdentifier = WM_CLIPBOARDUPDATE;
-
-		const int HWND_MESSAGE = -3; // https://docs.microsoft.com/en-us/windows/win32/winmsg/window-features#message-only-windows
-		const int MessageOnlyWindowHandlerId = HWND_MESSAGE;
-
-		readonly HwndSource messageOnlyWindow;
+		readonly ClipboardWindow clipboardWindow;
 		bool isDisposed;
 
 		public Clipboard()
 		{
 			isDisposed = false;
-
-			// Создание окна-слушателя и добавление хука для обработки необходимых сообщений.
-			var messageOnlyWindowConfig = new HwndSourceParameters
-			{
-				WindowClassStyle = default,
-				ExtendedWindowStyle = default,
-				WindowStyle = default,
-				PositionX = default,
-				PositionY = default,
-				Height = default,
-				Width = default,
-				WindowName = string.Empty,
-			};
-			messageOnlyWindowConfig.ParentWindow = new IntPtr(MessageOnlyWindowHandlerId);
-			messageOnlyWindow = new HwndSource(messageOnlyWindowConfig);
-			messageOnlyWindow.AddHook(WindowsMessagesInterceptor);
-			// ^^^
-			// Есть ещё множество способов создать собственное msg-only окно
-			// если надумаешь попробовать\потестировать, то материал можно найти здесь:
-			// https://www.cyberforum.ru/visual-cpp/thread241794.html
-			// https://docs.microsoft.com/en-us/windows/win32/winmsg/window-features#message-only-windows
+			clipboardWindow = new ClipboardWindow();
+			clipboardWindow.NewClipboardDataObtained += NewClipboardDataObtained;
 
 			// Подписание окна-слушателя на получение необходимых сообщений.
-			SubscribeToClipboardUpdates();
-		}
-		void SubscribeToClipboardUpdates()
-		{
-			const int RetryCount = 5;
-
-			byte currentTry = 0;
-			bool subscribed;
-			while (true)
-			{
-				subscribed = NativeMethodsWrapper.SubscribeWindowToClipboardUpdates(messageOnlyWindow.Handle, out int? errorCode);
-				if (subscribed)
-				{
-					break;
-				}
-				else
-				{
-					// TODO: Логирование ошибки.
-					HandleError(errorCode, out bool errorHandled);
-					if (!errorHandled)
-					{
-						break;
-					}
-					currentTry++;
-				}
-
-				if (currentTry == RetryCount)
-				{
-					break;
-				}
-			}
-
+			var subscribed = clipboardWindow.SubscribeToClipboardUpdates();
 			if (!subscribed)
 			{
-				throw new InicializationException("Не удалось подписаться на уведомления обновления содержимого " +
-					"системного буфера обмена.");
-			}
-
-			void HandleError(int? errorCode, out bool errorHandled)
-			{
-				errorHandled = false;
-				switch (errorCode)
-				{
-					case NativeErrorsHelper.ERROR_INVALID_PARAMETER:
-						// Эта ошибка возникает при попытке повторного подписания одного и того же окна на уведомления.
-						// Мне неизвестно может ли эта ошибка возникать в следствии других действий.
-
-						// Такого происходить не должно, следовательно Assert?
-						break;
-					case NativeErrorsHelper.ERROR_INVALID_WINDOW_HANDLE:
-					// Эта ошибка возникала при попытке подписать на уведомления несуществующее окно.
-					// Мне неизвестно может ли эта ошибка возникать в следствии других действий.
-
-					// Попытаться его пересоздать или просто уведомить об исключении?
-					default:
-						// Уведомить о получении непредвиденной ошибки.
-						errorHandled = true;
-						break;
-				}
-			}
-		}
-		void UnsubscribeFromClipboardUpdates()
-		{
-			const int RetryCount = 5;
-
-			byte currentTry = 0;
-			bool unsubscribed;
-			while (true)
-			{
-				unsubscribed = NativeMethodsWrapper.UnsubscribeWindowFromClipboardUpdates(messageOnlyWindow.Handle, out int? errorCode);
-				if (unsubscribed)
-				{
-					break;
-				}
-				else
-				{
-					// TODO: Логирование ошибки.
-					HandleError(errorCode, out bool errorHandled);
-					if (!errorHandled)
-					{
-						break;
-					}
-					currentTry++;
-				}
-
-				if (currentTry == RetryCount)
-				{
-					break;
-				}
-			}
-
-			if (!unsubscribed)
-			{
-				throw new InicializationException("Не удалось отписаться от уведомлений обновления содержимого " +
-					"системного буфера обмена."); // TODO: здесь не InicExeption
-			}
-
-			void HandleError(int? errorCode, out bool errorHandled)
-			{
-				errorHandled = false;
-				switch (errorCode)
-				{
-					case NativeErrorsHelper.ERROR_INVALID_PARAMETER:
-						// Эта ошибка возникала при попытке повторного отписания одного и того же окна от уведомлений.
-						// Мне неизвестно может ли эта ошибка возникать в следствии других действий.
-
-						// Такого происходить не должно, следовательно Assert?
-						break;
-					case NativeErrorsHelper.ERROR_INVALID_WINDOW_HANDLE:
-					// Эта ошибка возникала при попытке отписать от уведомлений несуществующее окно.
-					// Мне неизвестно может ли эта ошибка возникать в следствии других действий.
-
-					// Попытаться его пересоздать или просто уведомить об исключении?
-					default:
-						errorHandled = true;
-						break;
-				}
-			}
-		}
-		bool GetExclusiveAccess()
-		{
-			const int RetryCount = 5;
-
-			int currentTry = 0;
-			bool controlGranted;
-			while (true)
-			{
-				controlGranted = NativeMethodsWrapper.GetExclusiveClipboardControl(messageOnlyWindow.Handle, out int? errorCode);
-				if (controlGranted)
-				{
-					break;
-				}
-				else
-				{
-					HandleError(errorCode, out bool errorHandled);
-					if (!errorHandled)
-					{
-						break;
-					}
-					currentTry++;
-				}
-
-				if (currentTry == RetryCount)
-				{
-					break;
-				}
-			}
-
-			return controlGranted;
-
-			void HandleError(int? errorCode, out bool errorHandled)
-			{
-				switch (errorCode)
-				{
-					case NativeErrorsHelper.ERROR_ACCESS_DENIED:
-						// При отказе в получении контроля вероятнее всего этот самый контроль занят.
-						// Просто подождём и повторим попытку.
-						Thread.Sleep(100); // TODO: время ожидания.
-						errorHandled = true;
-						break;
-					default:
-						errorHandled = false;
-						break;
-				}
-			}
-		}
-		bool ReturnExclusiveAccess()
-		{
-			const int RetryCount = 5;
-
-			int currentTry = 0;
-			bool controlReturned;
-			while (true)
-			{
-				controlReturned = NativeMethodsWrapper.ReturnExclusiveClipboardControl(out int? errorCode);
-				if (controlReturned)
-				{
-					break;
-				}
-				else
-				{
-					HandleError(errorCode, out bool errorHandled);
-					if (!errorHandled)
-					{
-						break;
-					}
-					currentTry++;
-				}
-
-				if (currentTry == RetryCount)
-				{
-					break;
-				}
-			}
-
-			return controlReturned;
-
-			void HandleError(int? errorCode, out bool errorHandled)
-			{
-				switch (errorCode) // TODO: собрать информацию о возможных ошибках.
-				{
-					case NativeErrorsHelper.ERROR_CLIPBOARD_NOT_OPEN:
-						// Контроль не был получен, нет возможности вернуть контроль.
-						// Т.к. это никак не отражается на работе приложения ограничимся
-						// лишь записью в лог.
-						controlReturned = true;
-						errorHandled = true;
-						break;
-					default:
-						errorHandled = false;
-						break;
-				}
+				var exceptionMessage = "Не удалось подписаться на уведомления обновления содержимого системного буфера обмена.";
+				throw new InicializationException(exceptionMessage);
 			}
 		}
 
@@ -267,24 +35,6 @@ namespace Clipboard
 		/// Сигнализирует о том, что в буфер обмена попали новые данные.
 		/// </summary>
 		public event Action NewClipboardDataObtained = delegate { };
-
-		/// <summary>
-		/// Используется как перехватчик системных сообщений получаемых окном <see cref="messageOnlyWindow"/>
-		/// для обработки сообщений типа <see cref="ClipboardUpdatedMessageIdentifier"/> которые сигнализируют об обновлении
-		/// системного буфера обмена.
-		/// </summary>
-		IntPtr WindowsMessagesInterceptor(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
-		{
-			// TAI: необходимо подробнее разобраться в механизме перехвата сообщений.
-			// https://docs.microsoft.com/en-us/windows/win32/winmsg/about-hooks
-			// https://habr.com/ru/company/icl_services/blog/324718/
-			if (msg == ClipboardUpdatedMessageIdentifier)
-			{
-				NewClipboardDataObtained();
-			}
-
-			return IntPtr.Zero;
-		}
 
 		/// <summary>
 		/// Опрашивает системный буфер обмена на тип в котором хранятся данные и возвращает
@@ -634,7 +384,7 @@ namespace Clipboard
 		IReadOnlyCollection<string> GetPresentedFormats()
 		{
 			// Для опроса буфера обмена необходимо получить эксклюзивный доступ.
-			var exclusiveControlGranted = GetExclusiveAccess();
+			var exclusiveControlGranted = clipboardWindow.GetExclusiveAccess();
 			if (!exclusiveControlGranted)
 			{
 				throw new ExclusiveControlException("Не удалось получить эксклюзивный контроль " +
@@ -647,7 +397,7 @@ namespace Clipboard
 				formats = Array.Empty<string>();
 			}
 
-			var exclisiveControlReturned = ReturnExclusiveAccess();
+			var exclisiveControlReturned = clipboardWindow.ReturnExclusiveAccess();
 			if (!exclisiveControlReturned)
 			{
 				throw new ExclusiveControlException("Не удалось вернуть эксклюзивный контроль " +
@@ -681,17 +431,16 @@ namespace Clipboard
 		#region Disposing
 		public void Dispose()
 		{
-			try
-			{
-				UnsubscribeFromClipboardUpdates();
-			}
-			catch (InicializationException) // TODO: другое исключение.
+			var unsubscribed = clipboardWindow.UnsubscribeFromClipboardUpdates();
+			if (!unsubscribed)
 			{
 				// TODO: ну и что делать если не получилось выписать себя из списка получателей сообщения? 
 				// Как корректно завершить работу приложения?
+				var exceptionMessage = "Не удалось отписаться от уведомлений обновления содержимого системного буфера обмена.";
+				throw new InicializationException(exceptionMessage); // CA1065 гласит о том, что нельзя выбрасывать исключения из Dispose методов.
 			}
 
-			messageOnlyWindow.Dispose();
+			clipboardWindow.Dispose();
 			GC.SuppressFinalize(this);
 			isDisposed = true;
 		}
@@ -705,6 +454,276 @@ namespace Clipboard
 		}
 		#endregion
 
+		class ClipboardWindow : IDisposable
+		{
+			const int WM_CLIPBOARDUPDATE = 0x031D; // https://docs.microsoft.com/en-us/windows/win32/dataxchg/wm-clipboardupdate
+			const int ClipboardUpdatedMessageIdentifier = WM_CLIPBOARDUPDATE;
+
+			const int HWND_MESSAGE = -3; // https://docs.microsoft.com/en-us/windows/win32/winmsg/window-features#message-only-windows
+			const int MessageOnlyWindowHandlerId = HWND_MESSAGE;
+
+			readonly HwndSource windowHandlerSource;
+
+			internal IntPtr Handler => windowHandlerSource.Handle;
+
+			internal ClipboardWindow()
+			{
+				// Создание окна-слушателя и добавление хука для обработки необходимых сообщений.
+				var windowHandlerSourceConfig = new HwndSourceParameters
+				{
+					WindowClassStyle = default,
+					ExtendedWindowStyle = default,
+					WindowStyle = default,
+					PositionX = default,
+					PositionY = default,
+					Height = default,
+					Width = default,
+					WindowName = string.Empty,
+				};
+				windowHandlerSourceConfig.ParentWindow = new IntPtr(MessageOnlyWindowHandlerId);
+				windowHandlerSource = new HwndSource(windowHandlerSourceConfig);
+				windowHandlerSource.AddHook(WindowsMessagesInterceptor);
+				// ^^^
+				// Есть ещё множество способов создать собственное msg-only окно
+				// если надумаешь попробовать\потестировать, то материал можно найти здесь:
+				// https://www.cyberforum.ru/visual-cpp/thread241794.html
+				// https://docs.microsoft.com/en-us/windows/win32/winmsg/window-features#message-only-windows
+			}
+
+			public event Action NewClipboardDataObtained = delegate { };
+
+			internal bool SubscribeToClipboardUpdates()
+			{
+				const int RetryCount = 5;
+
+				byte currentTry = 0;
+				bool subscribed;
+				while (true)
+				{
+					subscribed = NativeMethodsWrapper.SubscribeWindowToClipboardUpdates(windowHandlerSource.Handle, out int? errorCode);
+					if (subscribed)
+					{
+						break;
+					}
+					else
+					{
+						HandleError(errorCode, out bool errorHandled);
+						if (!errorHandled)
+						{
+							break;
+						}
+						currentTry++;
+					}
+
+					if (currentTry == RetryCount)
+					{
+						break;
+					}
+				}
+
+				return subscribed;
+
+				void HandleError(int? errorCode, out bool errorHandled)
+				{
+					errorHandled = false; // TODO: здесь true
+					switch (errorCode)
+					{
+						case NativeErrorsHelper.ERROR_INVALID_PARAMETER:
+							// Эта ошибка возникает при попытке повторного подписания одного и того же окна на уведомления.
+							// Мне неизвестно может ли эта ошибка возникать в следствии других действий.
+
+							// Такого происходить не должно, следовательно Assert?
+							break;
+						case NativeErrorsHelper.ERROR_INVALID_WINDOW_HANDLE:
+						// Эта ошибка возникала при попытке подписать на уведомления несуществующее окно.
+						// Мне неизвестно может ли эта ошибка возникать в следствии других действий.
+
+						// Попытаться его пересоздать или просто уведомить об исключении?
+						default:
+							errorHandled = true; // TODO: здесь false.
+							break;
+					}
+				}
+			}
+			internal bool UnsubscribeFromClipboardUpdates()
+			{
+				const int RetryCount = 5;
+
+				byte currentTry = 0;
+				bool unsubscribed;
+				while (true)
+				{
+					unsubscribed = NativeMethodsWrapper.UnsubscribeWindowFromClipboardUpdates(windowHandlerSource.Handle, out int? errorCode);
+					if (unsubscribed)
+					{
+						break;
+					}
+					else
+					{
+						HandleError(errorCode, out bool errorHandled);
+						if (!errorHandled)
+						{
+							break;
+						}
+						currentTry++;
+					}
+
+					if (currentTry == RetryCount)
+					{
+						break;
+					}
+				}
+
+				return unsubscribed;
+
+				void HandleError(int? errorCode, out bool errorHandled)
+				{
+					errorHandled = false;
+					switch (errorCode)
+					{
+						case NativeErrorsHelper.ERROR_INVALID_PARAMETER:
+							// Эта ошибка возникала при попытке повторного отписания одного и того же окна от уведомлений.
+							// Мне неизвестно может ли эта ошибка возникать в следствии других действий.
+
+							// Такого происходить не должно, следовательно Assert?
+							break;
+						case NativeErrorsHelper.ERROR_INVALID_WINDOW_HANDLE:
+						// Эта ошибка возникала при попытке отписать от уведомлений несуществующее окно.
+						// Мне неизвестно может ли эта ошибка возникать в следствии других действий.
+
+						// Попытаться его пересоздать или просто уведомить об исключении?
+						default:
+							errorHandled = true;
+							break;
+					}
+				}
+			}
+			internal bool GetExclusiveAccess()
+			{
+				const int RetryCount = 5;
+
+				int currentTry = 0;
+				bool controlGranted;
+				while (true)
+				{
+					controlGranted = NativeMethodsWrapper.GetExclusiveClipboardControl(Handler, out int? errorCode);
+					if (controlGranted)
+					{
+						break;
+					}
+					else
+					{
+						HandleError(errorCode, out bool errorHandled);
+						if (!errorHandled)
+						{
+							break;
+						}
+						currentTry++;
+					}
+
+					if (currentTry == RetryCount)
+					{
+						break;
+					}
+				}
+
+				return controlGranted;
+
+				void HandleError(int? errorCode, out bool errorHandled)
+				{
+					switch (errorCode)
+					{
+						case NativeErrorsHelper.ERROR_ACCESS_DENIED:
+							// При отказе в получении контроля вероятнее всего этот самый контроль занят.
+							// Просто подождём и повторим попытку.
+							Thread.Sleep(100); // TODO: время ожидания.
+							errorHandled = true;
+							break;
+						default:
+							errorHandled = false;
+							break;
+					}
+				}
+			}
+			internal bool ReturnExclusiveAccess()
+			{
+				const int RetryCount = 5;
+
+				int currentTry = 0;
+				bool controlReturned;
+				while (true)
+				{
+					controlReturned = NativeMethodsWrapper.ReturnExclusiveClipboardControl(out int? errorCode);
+					if (controlReturned)
+					{
+						break;
+					}
+					else
+					{
+						HandleError(errorCode, out bool errorHandled);
+						if (!errorHandled)
+						{
+							break;
+						}
+						else
+						{
+							if (controlReturned)
+							{
+								break;
+							}
+						}
+						currentTry++;
+					}
+
+					if (currentTry == RetryCount)
+					{
+						break;
+					}
+				}
+
+				return controlReturned;
+
+				void HandleError(int? errorCode, out bool errorHandled)
+				{
+					switch (errorCode) // TODO: собрать информацию о возможных ошибках.
+					{
+						case NativeErrorsHelper.ERROR_CLIPBOARD_NOT_OPEN:
+							// Контроль не был получен, нет возможности вернуть контроль.
+							// Т.к. это никак не отражается на работе приложения ограничимся
+							// лишь записью в лог.
+							controlReturned = true;
+							errorHandled = true;
+							break;
+						default:
+							errorHandled = false;
+							break;
+					}
+				}
+			}
+
+			/// <summary>
+			/// Используется как перехватчик системных сообщений получаемых окном <see cref="windowHandlerSource"/>
+			/// для обработки сообщений типа <see cref="ClipboardUpdatedMessageIdentifier"/> которые сигнализируют об обновлении
+			/// системного буфера обмена.
+			/// </summary>
+			IntPtr WindowsMessagesInterceptor(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+			{
+				// TAI: необходимо подробнее разобраться в механизме перехвата сообщений.
+				// https://docs.microsoft.com/en-us/windows/win32/winmsg/about-hooks
+				// https://habr.com/ru/company/icl_services/blog/324718/
+				if (msg == ClipboardUpdatedMessageIdentifier)
+				{
+					NewClipboardDataObtained();
+				}
+
+				return IntPtr.Zero;
+			}
+
+			public void Dispose()
+			{
+				windowHandlerSource.Dispose();
+			}
+		}
 		#region Exceptions
 		public abstract class ClipboardException : Exception
 		{
