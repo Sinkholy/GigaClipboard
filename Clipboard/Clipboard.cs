@@ -529,7 +529,7 @@ namespace Clipboard
 
 				void HandleError(int? errorCode, out bool errorHandled, out bool expectedError)
 				{
-					errorHandled = false; // TODO: здесь true
+					errorHandled = true;
 					expectedError = true;
 					switch (errorCode)
 					{
@@ -546,7 +546,7 @@ namespace Clipboard
 						// Попытаться его пересоздать или просто уведомить об исключении?
 						default:
 							expectedError = false;
-							errorHandled = true; // TODO: здесь false.
+							errorHandled = false;
 							break;
 					}
 				}
