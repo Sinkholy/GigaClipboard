@@ -23,7 +23,7 @@ namespace Clipboard
 			clipboardWindow.NewClipboardDataObtained += NewClipboardDataObtained;
 
 			// Подписание окна-слушателя на получение необходимых сообщений.
-			var subscribed = clipboardWindow.SubscribeToClipboardUpdates();
+			var subscribed = clipboardWindow.SubscribeToClipboardUpdates(out var errors);
 			if (!subscribed)
 			{
 				var exceptionMessage = "Не удалось подписаться на уведомления обновления содержимого системного буфера обмена.";
@@ -384,7 +384,7 @@ namespace Clipboard
 		IReadOnlyCollection<string> GetPresentedFormats()
 		{
 			// Для опроса буфера обмена необходимо получить эксклюзивный доступ.
-			var exclusiveControlGranted = clipboardWindow.GetExclusiveAccess();
+			var exclusiveControlGranted = clipboardWindow.GetExclusiveAccess(out var errors);
 			if (!exclusiveControlGranted)
 			{
 				throw new ExclusiveControlException("Не удалось получить эксклюзивный контроль " +
@@ -397,7 +397,7 @@ namespace Clipboard
 				formats = Array.Empty<string>();
 			}
 
-			var exclisiveControlReturned = clipboardWindow.ReturnExclusiveAccess();
+			var exclisiveControlReturned = clipboardWindow.ReturnExclusiveAccess(out errors);
 			if (!exclisiveControlReturned)
 			{
 				throw new ExclusiveControlException("Не удалось вернуть эксклюзивный контроль " +
@@ -431,7 +431,7 @@ namespace Clipboard
 		#region Disposing
 		public void Dispose()
 		{
-			var unsubscribed = clipboardWindow.UnsubscribeFromClipboardUpdates();
+			var unsubscribed = clipboardWindow.UnsubscribeFromClipboardUpdates(out var errors);
 			if (!unsubscribed)
 			{
 				// TODO: ну и что делать если не получилось выписать себя из списка получателей сообщения? 
@@ -492,10 +492,11 @@ namespace Clipboard
 
 			public event Action NewClipboardDataObtained = delegate { };
 
-			internal bool SubscribeToClipboardUpdates()
+			internal bool SubscribeToClipboardUpdates(out ICollection<NativeError>? errors)
 			{
 				const int RetryCount = 5;
 
+				var errorsLazy = new Lazy<List<NativeError>>();
 				byte currentTry = 0;
 				bool subscribed;
 				while (true)
@@ -507,7 +508,8 @@ namespace Clipboard
 					}
 					else
 					{
-						HandleError(errorCode, out bool errorHandled);
+						HandleError(errorCode, out bool errorHandled, out bool expectedError);
+						RecordError(errorCode.Value, errorHandled, expectedError);
 						if (!errorHandled)
 						{
 							break;
@@ -520,12 +522,15 @@ namespace Clipboard
 						break;
 					}
 				}
-
+				errors = errorsLazy.IsValueCreated
+					? errorsLazy.Value
+					: null;
 				return subscribed;
 
-				void HandleError(int? errorCode, out bool errorHandled)
+				void HandleError(int? errorCode, out bool errorHandled, out bool expectedError)
 				{
 					errorHandled = false; // TODO: здесь true
+					expectedError = true;
 					switch (errorCode)
 					{
 						case NativeErrorsHelper.ERROR_INVALID_PARAMETER:
@@ -540,15 +545,31 @@ namespace Clipboard
 
 						// Попытаться его пересоздать или просто уведомить об исключении?
 						default:
+							expectedError = false;
 							errorHandled = true; // TODO: здесь false.
 							break;
 					}
 				}
+				void RecordError(int code, bool handled, bool expected)
+				{
+					var error = NativeErrorsHelper.CreateNativeErrorFromCode(code);
+					if (!handled)
+					{
+						error.Attributes |= NativeError.ErrorAttributes.UnHandled;
+					}
+					if (!expected)
+					{
+						error.Attributes |= NativeError.ErrorAttributes.UnExpected;
+					}
+
+					errorsLazy.Value.Add(error);
+				}
 			}
-			internal bool UnsubscribeFromClipboardUpdates()
+			internal bool UnsubscribeFromClipboardUpdates(out ICollection<NativeError>? errors)
 			{
 				const int RetryCount = 5;
 
+				var errorsLazy = new Lazy<List<NativeError>>();
 				byte currentTry = 0;
 				bool unsubscribed;
 				while (true)
@@ -560,7 +581,8 @@ namespace Clipboard
 					}
 					else
 					{
-						HandleError(errorCode, out bool errorHandled);
+						HandleError(errorCode, out bool errorHandled, out bool expectedError);
+						RecordError(errorCode.Value, errorHandled, expectedError);
 						if (!errorHandled)
 						{
 							break;
@@ -574,11 +596,15 @@ namespace Clipboard
 					}
 				}
 
+				errors = errorsLazy.IsValueCreated
+					? errorsLazy.Value
+					: null;
 				return unsubscribed;
 
-				void HandleError(int? errorCode, out bool errorHandled)
+				void HandleError(int? errorCode, out bool errorHandled, out bool expectedError)
 				{
 					errorHandled = false;
+					expectedError = true;
 					switch (errorCode)
 					{
 						case NativeErrorsHelper.ERROR_INVALID_PARAMETER:
@@ -594,14 +620,30 @@ namespace Clipboard
 						// Попытаться его пересоздать или просто уведомить об исключении?
 						default:
 							errorHandled = true;
+							expectedError = false;
 							break;
 					}
 				}
+				void RecordError(int code, bool handled, bool expected)
+				{
+					var error = NativeErrorsHelper.CreateNativeErrorFromCode(code);
+					if (!handled)
+					{
+						error.Attributes |= NativeError.ErrorAttributes.UnHandled;
+					}
+					if (!expected)
+					{
+						error.Attributes |= NativeError.ErrorAttributes.UnExpected;
+					}
+
+					errorsLazy.Value.Add(error);
+				}
 			}
-			internal bool GetExclusiveAccess()
+			internal bool GetExclusiveAccess(out ICollection<NativeError>? errors)
 			{
 				const int RetryCount = 5;
 
+				var errorsLazy = new Lazy<List<NativeError>>();
 				int currentTry = 0;
 				bool controlGranted;
 				while (true)
@@ -613,7 +655,8 @@ namespace Clipboard
 					}
 					else
 					{
-						HandleError(errorCode, out bool errorHandled);
+						HandleError(errorCode, out bool errorHandled, out bool expectedError);
+						RecordError(errorCode.Value, errorHandled, expectedError);
 						if (!errorHandled)
 						{
 							break;
@@ -627,28 +670,48 @@ namespace Clipboard
 					}
 				}
 
+				errors = errorsLazy.IsValueCreated
+					? errorsLazy.Value
+					: null;
 				return controlGranted;
 
-				void HandleError(int? errorCode, out bool errorHandled)
+				void HandleError(int? errorCode, out bool errorHandled, out bool expectedError)
 				{
+					errorHandled = true;
+					expectedError = true;
 					switch (errorCode)
 					{
 						case NativeErrorsHelper.ERROR_ACCESS_DENIED:
 							// При отказе в получении контроля вероятнее всего этот самый контроль занят.
 							// Просто подождём и повторим попытку.
 							Thread.Sleep(100); // TODO: время ожидания.
-							errorHandled = true;
 							break;
 						default:
 							errorHandled = false;
+							expectedError = false;
 							break;
 					}
 				}
+				void RecordError(int code, bool handled, bool expected)
+				{
+					var error = NativeErrorsHelper.CreateNativeErrorFromCode(code);
+					if (!handled)
+					{
+						error.Attributes |= NativeError.ErrorAttributes.UnHandled;
+					}
+					if (!expected)
+					{
+						error.Attributes |= NativeError.ErrorAttributes.UnExpected;
+					}
+
+					errorsLazy.Value.Add(error);
+				}
 			}
-			internal bool ReturnExclusiveAccess()
+			internal bool ReturnExclusiveAccess(out ICollection<NativeError>? errors)
 			{
 				const int RetryCount = 5;
 
+				var errorsLazy = new Lazy<List<NativeError>>();
 				int currentTry = 0;
 				bool controlReturned;
 				while (true)
@@ -660,7 +723,8 @@ namespace Clipboard
 					}
 					else
 					{
-						HandleError(errorCode, out bool errorHandled);
+						HandleError(errorCode, out bool errorHandled, out bool expectedError);
+						RecordError(errorCode.Value, errorHandled, expectedError);
 						if (!errorHandled)
 						{
 							break;
@@ -681,10 +745,15 @@ namespace Clipboard
 					}
 				}
 
+				errors = errorsLazy.IsValueCreated
+					? errorsLazy.Value
+					: null;
 				return controlReturned;
 
-				void HandleError(int? errorCode, out bool errorHandled)
+				void HandleError(int? errorCode, out bool errorHandled, out bool expectedError)
 				{
+					errorHandled = true;
+					expectedError = true;
 					switch (errorCode) // TODO: собрать информацию о возможных ошибках.
 					{
 						case NativeErrorsHelper.ERROR_CLIPBOARD_NOT_OPEN:
@@ -692,12 +761,26 @@ namespace Clipboard
 							// Т.к. это никак не отражается на работе приложения ограничимся
 							// лишь записью в лог.
 							controlReturned = true;
-							errorHandled = true;
 							break;
 						default:
 							errorHandled = false;
+							expectedError = false;
 							break;
 					}
+				}
+				void RecordError(int code, bool handled, bool expected)
+				{
+					var error = NativeErrorsHelper.CreateNativeErrorFromCode(code);
+					if (!handled)
+					{
+						error.Attributes |= NativeError.ErrorAttributes.UnHandled;
+					}
+					if (!expected)
+					{
+						error.Attributes |= NativeError.ErrorAttributes.UnExpected;
+					}
+
+					errorsLazy.Value.Add(error);
 				}
 			}
 
