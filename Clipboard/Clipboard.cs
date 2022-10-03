@@ -3,11 +3,12 @@ using System.Windows.Interop;
 
 using SystemClipboard = System.Windows.Clipboard;
 
-using Core;
 using System.IO;
 using System.Windows.Media.Imaging;
-using static Core.IClipboard;
 using Clipboard.Native;
+
+using API;
+using static API.IClipboard;
 
 namespace Clipboard
 {
@@ -167,7 +168,7 @@ namespace Clipboard
 			var image = SystemClipboard.GetImage();
 			return image is null
 						 ? null
-						 : new ClipboardImageData(image, DataType.AudioStream);
+						 : new ClipboardImageData(image, DataType.AudioStream); // TODO: здесь не аудиострим
 		}
 		/// <summary>
 		/// Запрашивает данные из буфера обмена в формате коллекции путей к расположению файлов на дисковой системе 

@@ -1,8 +1,7 @@
-﻿using System.ComponentModel.DataAnnotations;
-using System.IO;
+﻿using System.IO;
 using System.Windows.Media.Imaging;
 
-namespace Core
+namespace API
 {
 	/// <summary>
 	/// Класс реализующий этот интерфейс должен предоставлять
