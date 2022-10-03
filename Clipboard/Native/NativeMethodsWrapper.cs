@@ -315,7 +315,7 @@ namespace Clipboard.Native
 		static bool IsErrorOccured(out int? errorCode)
 		{
 			errorCode = Marshal.GetLastWin32Error();
-			return errorCode != NativeErrors.ERROR_SUCCESS;
+			return errorCode != NativeErrorsHelper.ERROR_SUCCESS;
 		}
 		static int GetLastNativeError()
 		{

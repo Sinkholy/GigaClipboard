@@ -91,17 +91,17 @@ namespace Clipboard
 				errorHandled = false;
 				switch (errorCode)
 				{
-					case NativeErrors.ERROR_INVALID_PARAMETER:
+					case NativeErrorsHelper.ERROR_INVALID_PARAMETER:
 						// Эта ошибка возникает при попытке повторного подписания одного и того же окна на уведомления.
 						// Мне неизвестно может ли эта ошибка возникать в следствии других действий.
 
 						// Такого происходить не должно, следовательно Assert?
 						break;
-					case NativeErrors.ERROR_INVALID_WINDOW_HANDLE:
-						// Эта ошибка возникала при попытке подписать на уведомления несуществующее окно.
-						// Мне неизвестно может ли эта ошибка возникать в следствии других действий.
+					case NativeErrorsHelper.ERROR_INVALID_WINDOW_HANDLE:
+					// Эта ошибка возникала при попытке подписать на уведомления несуществующее окно.
+					// Мне неизвестно может ли эта ошибка возникать в следствии других действий.
 
-						// Попытаться его пересоздать или просто уведомить об исключении?
+					// Попытаться его пересоздать или просто уведомить об исключении?
 					default:
 						// Уведомить о получении непредвиденной ошибки.
 						errorHandled = true;
@@ -125,7 +125,7 @@ namespace Clipboard
 				else
 				{
 					// TODO: Логирование ошибки.
-					HandleError(errorCode, out bool	errorHandled);
+					HandleError(errorCode, out bool errorHandled);
 					if (!errorHandled)
 					{
 						break;
@@ -150,13 +150,13 @@ namespace Clipboard
 				errorHandled = false;
 				switch (errorCode)
 				{
-					case NativeErrors.ERROR_INVALID_PARAMETER:
+					case NativeErrorsHelper.ERROR_INVALID_PARAMETER:
 						// Эта ошибка возникала при попытке повторного отписания одного и того же окна от уведомлений.
 						// Мне неизвестно может ли эта ошибка возникать в следствии других действий.
 
 						// Такого происходить не должно, следовательно Assert?
 						break;
-					case NativeErrors.ERROR_INVALID_WINDOW_HANDLE:
+					case NativeErrorsHelper.ERROR_INVALID_WINDOW_HANDLE:
 					// Эта ошибка возникала при попытке отписать от уведомлений несуществующее окно.
 					// Мне неизвестно может ли эта ошибка возникать в следствии других действий.
 
@@ -202,7 +202,7 @@ namespace Clipboard
 			{
 				switch (errorCode)
 				{
-					case NativeErrors.ERROR_ACCESS_DENIED:
+					case NativeErrorsHelper.ERROR_ACCESS_DENIED:
 						// При отказе в получении контроля вероятнее всего этот самый контроль занят.
 						// Просто подождём и повторим попытку.
 						Thread.Sleep(100); // TODO: время ожидания.
@@ -249,7 +249,7 @@ namespace Clipboard
 			{
 				switch (errorCode) // TODO: собрать информацию о возможных ошибках.
 				{
-					case NativeErrors.ERROR_CLIPBOARD_NOT_OPEN:
+					case NativeErrorsHelper.ERROR_CLIPBOARD_NOT_OPEN:
 						// Контроль не был получен, нет возможности вернуть контроль.
 						// Т.к. это никак не отражается на работе приложения ограничимся
 						// лишь записью в лог.
