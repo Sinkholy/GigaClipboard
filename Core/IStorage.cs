@@ -1,4 +1,6 @@
-﻿namespace Core
+﻿using API;
+
+namespace Core
 {
 	public interface IStorage
 	{

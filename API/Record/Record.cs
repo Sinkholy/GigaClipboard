@@ -1,6 +1,4 @@
-﻿using API;
-
-namespace Core
+﻿namespace API
 {
 	/// <summary>
 	/// Представляет собой запись данных из буфера обмена.
