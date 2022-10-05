@@ -29,7 +29,7 @@ namespace Core
 		/// <summary>
 		/// Метаданные записи.
 		/// </summary>
-		public Metadata RecordMetadata { get; } // TODO: Поработай над неймингом.
+		public Metadata? RecordMetadata { get; } // TODO: Поработай над неймингом.
 
 		/// <summary>
 		/// Инкапсулирует сведения об идентификаторе записи.
@@ -53,11 +53,11 @@ namespace Core
 			/// <summary>
 			/// Дата и время когда были получены данные для этой записи.
 			/// </summary>
-			public DateTime CreatedAt { get; }
+			public DateTime? CreatedAt { get; init; }
 			/// <summary>
 			/// Контекст в котором были полученны данные для этой записи.
 			/// </summary>
-			public ApplicationMetadata CreationContext { get; }
+			public ApplicationMetadata? CreationContext { get; init; }
 
 			/// <summary>
 			/// Представляет метаданные приложения в котором были полученны данные.
@@ -65,17 +65,17 @@ namespace Core
 			public class ApplicationMetadata
 			{
 				/// <summary>
-				/// Идентификатор процесса в котором были получены данные.
+				/// Имя процесса в котором были получены данные.
 				/// </summary>
-				public object ProccessID { get; } // TODO: Необходимо узнать в каком формате хранить идентификатор процесса и что он вообще из себя представляет.
+				public string? ProcessName { get; init; }
 				/// <summary>
-				/// Имя приложения в котором были получены данные.
+				/// Описание процесса в котором были получены данные.
 				/// </summary>
-				public string Name { get; }
+				public string? ProcessDescription { get; init; }
 				/// <summary>
-				/// Описание приложения в котором были получены данные.
+				/// Текст содержащийся в заголовке окна в котором были получены данные.
 				/// </summary>
-				public string Description { get; }
+				public string? WindowTitle { get; init; }
 			}
 		}
 	}

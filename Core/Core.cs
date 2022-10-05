@@ -1,5 +1,4 @@
-﻿using API;
-
+﻿
 namespace Core
 {
 	/// <summary>
@@ -120,7 +119,7 @@ namespace Core
 			/// <summary>
 			/// Определяет метаданные которые будут сохранены в записи при её создании.
 			/// </summary>
-			public RecordMetadataType MetadataToCollect { get; }
+			public RecordMetadataFlags MetadataToCollect { get; }
 
 			/// <summary>
 			/// Определяет записи с какими типами данных будут сохраняться.
@@ -160,12 +159,14 @@ namespace Core
 			/// Отмеченно атрибутом Flags для более простого сравнения и хранения.
 			/// </remarks>
 			[Flags]
-			public enum RecordMetadataType : byte
+			public enum RecordMetadataFlags : byte // Naming
 			{
-				CreationDateTime,
-				ApplicationId,
-				ApplicationName,
-				ApplicationDescription
+				None = 0,
+				CreationDateTime = 1,
+				ProcessName = 2,
+				ProcessDescription = 4,
+				WindowTitle = 8,
+				All = CreationDateTime | ProcessName | ProcessDescription | WindowTitle
 			}
 		}
 	}
