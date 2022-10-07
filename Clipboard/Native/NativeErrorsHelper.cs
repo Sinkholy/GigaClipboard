@@ -28,7 +28,7 @@ namespace Clipboard.Native
 
 		internal static NativeError CreateNativeErrorFromCode(int errorCode)
 		{
-			var documentedError = TryGetErrorDecsription(errorCode, out string errorDesc);
+			var documentedError = TryGetErrorDescription(errorCode, out string errorDesc);
 			return documentedError
 				? new NativeError()
 				{
@@ -43,7 +43,7 @@ namespace Clipboard.Native
 					Attributes = NativeError.ErrorAttributes.UnDocumented
 				};
 		}
-		internal static bool TryGetErrorDecsription(int errorId, out string errorDesc)
+		internal static bool TryGetErrorDescription(int errorId, out string errorDesc)
 		{
 			return errorsDescriptionsByCode.TryGetValue(errorId, out errorDesc);
 		}
