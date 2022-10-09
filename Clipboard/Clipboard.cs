@@ -42,29 +42,28 @@ namespace Clipboard
 		/// управляющей стороне соответствующий внутренний тип.
 		/// </summary>
 		/// <returns>Тип в котором данные находятся в буфере обмена.</returns>
-		public DataType GetCurrentDataType()
+		public DataType? GetDataType()
 		{
-			var type = DataType.Unknown;
-
+			DataType? dataType = null;
 			// В зависимости от данных находящихся в буфере обмена установить тип данных.
 			if (IsDataTextFormated())
 			{
-				type = DataType.Text;
+				dataType = DataType.Text;
 			}
 			else if (SystemClipboard.ContainsImage())
 			{
-				type = DataType.Image;
+				dataType = DataType.Image;
 			}
 			else if (SystemClipboard.ContainsFileDropList())
 			{
-				type = DataType.FileDrop;
+				dataType = DataType.FileDrop;
 			}
 			else if (SystemClipboard.ContainsAudio())
 			{
-				type = DataType.AudioStream;
+				dataType = DataType.Audio;
 			}
 
-			return type;
+			return dataType;
 
 			static bool IsDataTextFormated() // TODO: небоходимо проверить последовательность форматов.
 			{
@@ -82,6 +81,48 @@ namespace Clipboard
 		}
 
 		#region Data getter's
+		public ClipboardData? GetData()
+		{
+			var dataType = GetDataType();
+			return dataType switch
+			{
+				DataType.Text => GetText(),
+				DataType.Image => GetImage(),
+				DataType.Audio => GetAudio(),
+				DataType.FileDrop => GetFileDrop(),
+				_ => null // TODO: ????
+			};
+
+			ClipboardData<string>? GetText()
+			{
+				var text = this.GetText();
+				return text is null
+							? null
+							: new ClipboardData<string>(text, DataType.Text);
+			}
+			ClipboardData<BitmapSource>? GetImage()
+			{
+				var image = this.GetImage();
+				return image is null
+							? null
+							: new ClipboardData<BitmapSource>(image, DataType.Image);
+			}
+			ClipboardData<Stream>? GetAudio()
+			{
+				var audioStream = this.GetAudio();
+				return audioStream is null
+									? null
+									: new ClipboardData<Stream>(audioStream, DataType.Audio);
+			}
+			ClipboardData<StringCollection>? GetFileDrop()
+			{
+				var fileDrop = this.GetFileDrop();
+				return fileDrop is null
+								? null
+								: new ClipboardData<StringCollection>(fileDrop, DataType.FileDrop);
+			}
+		}
+
 		/// <summary>
 		/// Опрашивает буфер обмена на формат текста в котором хранятся данные затем 
 		/// запрашивает данные в соответствующем формате и возвращает их управляющей стороне.
@@ -94,45 +135,36 @@ namespace Clipboard
 		/// Данные находящиеся в буфере обмена если они могут быть представлены в формате текста,
 		/// иначе <see langword="null"/>.
 		/// </returns>
-		public ClipboardTextData? GetText()
+		string? GetText()
 		{
-			ClipboardTextData.TextFormats textFormat = default;
 			string text = null;
 
 			if (SystemClipboard.ContainsText(System.Windows.TextDataFormat.Xaml))
 			{
-				textFormat = ClipboardTextData.TextFormats.Xaml;
 				text = SystemClipboard.GetText(System.Windows.TextDataFormat.Xaml);
 			}
 			else if (SystemClipboard.ContainsText(System.Windows.TextDataFormat.CommaSeparatedValue))
 			{
-				textFormat = ClipboardTextData.TextFormats.CSV;
 				text = SystemClipboard.GetText(System.Windows.TextDataFormat.CommaSeparatedValue);
 			}
 			else if (SystemClipboard.ContainsText(System.Windows.TextDataFormat.Html))
 			{
-				textFormat = ClipboardTextData.TextFormats.Html;
 				text = SystemClipboard.GetText(System.Windows.TextDataFormat.Html);
 			}
 			else if (SystemClipboard.ContainsText(System.Windows.TextDataFormat.Rtf))
 			{
-				textFormat = ClipboardTextData.TextFormats.RTF;
 				text = SystemClipboard.GetText(System.Windows.TextDataFormat.Rtf);
 			}
 			else if (SystemClipboard.ContainsText(System.Windows.TextDataFormat.UnicodeText))
 			{
-				textFormat = ClipboardTextData.TextFormats.UnicodeText;
 				text = SystemClipboard.GetText(System.Windows.TextDataFormat.UnicodeText);
 			}
 			else if (SystemClipboard.ContainsText(System.Windows.TextDataFormat.Text))
 			{
-				textFormat = ClipboardTextData.TextFormats.Text;
 				text = SystemClipboard.GetText(System.Windows.TextDataFormat.Text);
 			}
 
-			return text is null
-						? null
-						: new ClipboardTextData(text, textFormat);
+			return text;
 		}
 		/// <summary>
 		/// Запрашивает данные из буфера обмена в формате аудио-потока и возвращает их управляющей стороне.
@@ -145,12 +177,9 @@ namespace Clipboard
 		/// Данные находящиеся в буфере обмена если они могут быть представлены в формате аудио-потока,
 		/// иначе <see langword="null"/>.
 		/// </returns>
-		public ClipboardAudioStreamData? GetAudioStream()
+		Stream? GetAudio()
 		{
-			var stream = SystemClipboard.GetAudioStream();
-			return stream is null
-						  ? null
-						  : new ClipboardAudioStreamData(stream, DataType.AudioStream);
+			return SystemClipboard.GetAudioStream();
 		}
 		/// <summary>
 		/// Запрашивает данные из буфера обмена в формате изображения и возвращает их управляющей стороне.
@@ -163,12 +192,9 @@ namespace Clipboard
 		/// Данные находящиеся в буфере обмена если они могут быть представлены в формате изображения,
 		/// иначе <see langword="null"/>.
 		/// </returns>
-		public ClipboardImageData? GetImage()
+		BitmapSource? GetImage()
 		{
-			var image = SystemClipboard.GetImage();
-			return image is null
-						 ? null
-						 : new ClipboardImageData(image, DataType.AudioStream); // TODO: здесь не аудиострим
+			return SystemClipboard.GetImage();
 		}
 		/// <summary>
 		/// Запрашивает данные из буфера обмена в формате коллекции путей к расположению файлов на дисковой системе 
@@ -182,199 +208,157 @@ namespace Clipboard
 		/// Данные находящиеся в буфере обмена если они могут быть представлены в коллекции путей к расположению файлов,
 		/// иначе <see langword="null"/>.
 		/// </returns>
-		public ClipboardFilesPathesData? GetFileDrop()
+		StringCollection? GetFileDrop()
 		{
-			var filesPathes = SystemClipboard.GetFileDropList();
-			return filesPathes is null
-								? null
-								: new ClipboardFilesPathesData(filesPathes as IReadOnlyCollection<string>, DataType.FileDrop);
-
+			return SystemClipboard.GetFileDropList();
 		}
 		#endregion
 
 		#region Data setter's
-
-		/// <summary>
-		/// Помещает данные в буфер обмена в формате текста инкапсулированном в объекте типа \
-		/// <see cref="ClipboardTextData"/>.
-		/// </summary>
-		/// <param name="data">Объект инкапсулирующий доступ к данным.</param>
-		/// <exception cref="ArgumentNullException">Если <paramref name="data"/> равен null.</exception>
-		public void SetText(ClipboardTextData data)
+		public void SetData(object data, DataType dataType)
 		{
+			const string DataDoesNotMatchTypeExceptionMessage = $"Данные в параметре {nameof(data)}, не могут быть преобразованы к соответствующему типу переданому в параметре {nameof(dataType)}";
+
 			VerifyParameterIsNotNull(data, nameof(data));
 
-			SetText(data.Data, data.TextFormat);
-		}
-		/// <summary>
-		/// Помещает данные в буфер обмена в формате текста.
-		/// </summary>
-		/// <param name="value">Данные в формате текста.</param>
-		/// <param name="format">Формат текста в котором данные будут помещены в буфер обмена.</param>
-		/// <exception cref="ArgumentNullException">Если<paramref name="value"> равен null.</exception>
-		public void SetText(string value, ClipboardTextData.TextFormats format)
-		{
-			VerifyParameterIsNotNull(value, nameof(value));
-
-			var targetTextFormat = ConvertTextFormatToSystemType();
-			SetTextInternal(value, targetTextFormat);
-
-			System.Windows.TextDataFormat ConvertTextFormatToSystemType()
+			switch (dataType)
 			{
-				return format switch
+				case DataType.Text:
+					SetText();
+					break;
+				case DataType.Image:
+					SetImage();
+					break;
+				case DataType.Audio:
+					SetAudio();
+					break;
+				case DataType.FileDrop:
+					SetFileDrop();
+					break;
+				default: // TODO: что делать в default случае?
+					break;
+			}
+
+			void SetText()
+			{
+				if (data is string text)
 				{
-					ClipboardTextData.TextFormats.Xaml => System.Windows.TextDataFormat.Xaml,
-					ClipboardTextData.TextFormats.CSV => System.Windows.TextDataFormat.CommaSeparatedValue,
-					ClipboardTextData.TextFormats.Html => System.Windows.TextDataFormat.Html,
-					ClipboardTextData.TextFormats.RTF => System.Windows.TextDataFormat.Rtf,
-					ClipboardTextData.TextFormats.UnicodeText => System.Windows.TextDataFormat.UnicodeText,
-					ClipboardTextData.TextFormats.Text => System.Windows.TextDataFormat.Text,
-					_ => System.Windows.TextDataFormat.Text,
-				};
+					this.SetText(text, System.Windows.TextDataFormat.UnicodeText);
+				}
+				else
+				{
+					throw new ArgumentException(DataDoesNotMatchTypeExceptionMessage, nameof(data)); 
+				}
+			}
+			void SetImage()
+			{
+				if (data is BitmapSource image)
+				{
+					this.SetImage(image);
+				}
+				else
+				{
+					throw new ArgumentException(DataDoesNotMatchTypeExceptionMessage, nameof(data));
+				}
+			}
+			void SetAudio()
+			{
+				if (data is byte[] audioBytes)
+				{
+					this.SetAudio(audioBytes);
+				}
+				else if (data is Stream audioStream)
+				{
+					this.SetAudio(audioStream);
+				}
+				else
+				{
+					throw new ArgumentException(DataDoesNotMatchTypeExceptionMessage, nameof(data));
+				}
+			}
+			void SetFileDrop()
+			{
+				if (data is StringCollection stringCollection)
+				{
+					this.SetFileDrop(stringCollection);
+				}
+				else if (data is IEnumerable<string> enumerable)
+				{
+					this.SetFileDrop(ConvertCollectionToSpecialized(enumerable));
+				}
+				else
+				{
+					throw new ArgumentException(DataDoesNotMatchTypeExceptionMessage, nameof(data)); 
+				}
+
+				StringCollection ConvertCollectionToSpecialized(IEnumerable<string> enumerable)
+				{
+					var specialized = new StringCollection();
+					foreach (var path in enumerable)
+					{
+						specialized.Add(path);
+					}
+					return specialized;
+				}
 			}
 		}
+
 		/// <summary>
 		/// Инкапсулирует обращение к системному буферу обмена для формирования абстракции и
 		/// возможности использовать другой подход к обращению к системному буферу без больших
 		/// изменений исходного кода.
 		/// </summary>
-		void SetTextInternal(string value, System.Windows.TextDataFormat format)
+		void SetText(string value, System.Windows.TextDataFormat format)
 		{
 			SystemClipboard.SetText(value, format);
 		}
 
 		/// <summary>
-		/// Помещает данные в буфер обмена в формате инкапсулированном в объекте типа <see cref="ClipboardAudioStreamData"/>.
-		/// </summary>
-		/// <param name="data">Объект представляющий данные.</param>
-		/// <exception cref="ArgumentNullException">Если <paramref name="data"/> равен null.</exception>
-		/// <exception cref="ArgumentException">Если данные инкапсулированные в <paramref name="data"/> равны null.</exception>
-		public void SetAudio(ClipboardAudioStreamData data)
-		{
-			VerifyParameterIsNotNull(data, nameof(data));
-			if (data.Data is null)
-			{
-				var errorDesc = $"Данные содержащиеся в {nameof(data)} равны null " +
-					$"и не могут быть установлены в системный буфер обмена.";
-				throw new ArgumentException(errorDesc, nameof(data));
-			}
-
-			SetAudioStreamInternal(data.Data);
-		}
-		/// <summary>
-		/// Помещает данные в буфер обмена в формате аудио-потока.
-		/// </summary> 
-		/// <param name="audioStream">Данные в формате аудио-потока.</param>
-		/// <exception cref="ArgumentNullException">Если <paramref name="audioStream"> равен null.</exception>
-		public void SetAudio(Stream audioStream)
-		{
-			VerifyParameterIsNotNull(audioStream, nameof(audioStream));
-
-			SetAudioStreamInternal(audioStream);
-		}
-		/// <summary>
 		/// Инкапсулирует обращение к системному буферу обмена для формирования абстракции и
 		/// возможности использовать другой подход к обращению к системному буферу без больших
 		/// изменений исходного кода.
 		/// </summary>
-		void SetAudioStreamInternal(Stream audioStream)
+		void SetAudio(Stream audioStream)
 		{
 			SystemClipboard.SetAudio(audioStream);
 		}
 		/// <summary>
-		/// Помещает данные в буфер обмена обмена в формате массива байтов представляющего собой аудиозапись.
-		/// </summary>
-		/// <param name="audioBytes">Данные в формате массива байтов представляющего собой аудиозапись.</param>
-		/// <exception cref="ArgumentNullException">Если <paramref name="audioBytes"> равен null.</exception>
-		public void SetAudio(byte[] audioBytes)
-		{
-			VerifyParameterIsNotNull(audioBytes, nameof(audioBytes));
-
-			SetAudioBytesInternal(audioBytes);
-		}
-		/// <summary>
 		/// Инкапсулирует обращение к системному буферу обмена для формирования абстракции и
 		/// возможности использовать другой подход к обращению к системному буферу без больших
 		/// изменений исходного кода.
 		/// </summary>
-		void SetAudioBytesInternal(byte[] audioBytes)
+		void SetAudio(byte[] audioBytes)
 		{
 			SystemClipboard.SetAudio(audioBytes);
 		}
 
 		/// <summary>
-		/// Помещает данные в буфер обмена в формате инкапсулированном в объекте типа <see cref="ClipboardImageData"/>.
-		/// </summary>
-		/// <param name="data">Объект инкапсулирующий доступ к данным.</param>
-		/// <exception cref="ArgumentNullException">Если <paramref name="data"/> равен null.</exception>
-		public void SetImage(ClipboardImageData data)
-		{
-			VerifyParameterIsNotNull(data, nameof(data));
-
-			SetImage(data.Data);
-		}
-		/// <summary>
 		/// Помещает данные в буфер обмена в формате изображения. <see cref="ClipboardTextData"/>.
 		/// </summary>
 		/// <param name="image">Изображение которое необходимо установить в буфер обмена.</param>
-		/// <exception cref="ArgumentNullException">Если <paramref name="image"/> равен null.</exception>
-		public void SetImage(BitmapSource image)
+		void SetImage(BitmapSource image)
 		{
-			VerifyParameterIsNotNull(image, nameof(image));
-
 			SystemClipboard.SetImage(image);
 		}
 
-		/// <summary>
-		/// Помещает данные в буфер обмена в формате инкапсулированном в объекте типа <see cref="ClipboardFilesPathesData"/>.
-		/// </summary>
-		/// <param name="data">Объект представляющий данные.</param>
-		/// <exception cref="ArgumentNullException">Если <paramref name="data"> равен null.</exception>
-		public void SetFilesPathes(ClipboardFilesPathesData data)
-		{
-			VerifyParameterIsNotNull(data, nameof(data));
-
-			SetFilesPathes(data.Data);
-		}
-		/// <summary>
-		/// Помещает данные в буфер обмена в формате набора путей к файлам. <see cref="ClipboardTextData"/>.
-		/// </summary>
-		/// <param name="pathes">Коллекция путей к файлам.</param>
-		/// <exception cref="ArgumentNullException">Если <paramref name="pathes"/> равен null.</exception>
-		public void SetFilesPathes(IReadOnlyCollection<string> pathes)
-		{
-			VerifyParameterIsNotNull(pathes, nameof(pathes));
-
-			if (pathes is StringCollection specializedCollection)
-			{
-				SetFilesPathesInternal(specializedCollection);
-			}
-			else
-			{
-				specializedCollection = ConvertCollectionToSpecialized();
-				SetFilesPathesInternal(specializedCollection);
-			}
-
-			StringCollection ConvertCollectionToSpecialized()
-			{
-				var specialized = new StringCollection();
-				foreach (var path in pathes)
-				{
-					specialized.Add(path);
-				}
-				return specialized;
-			}
-		}
 		/// <summary>
 		/// Инкапсулирует обращение к системному буферу обмена для формирования абстракции и
 		/// возможности использовать другой подход к обращению к системному буферу без больших
 		/// изменений исходного кода.
 		/// </summary>
-		void SetFilesPathesInternal(StringCollection pathes)
+		void SetFileDrop(StringCollection pathes)
 		{
 			SystemClipboard.SetFileDropList(pathes);
 		}
 		#endregion
+
+		public void ClearClipboard()
+		{
+			if(!NativeMethodsWrapper.ClearClipboard(out var errorCode))
+			{
+				// TODO: логирование 
+			}
+		}
 
 		/// <summary>
 		/// Опрашивает системный буфер для получения форматов в которых представленны данных хранящиеся в нём и
