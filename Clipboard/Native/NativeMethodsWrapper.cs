@@ -18,7 +18,7 @@ namespace Clipboard.Native
 		/// <returns>
 		///		<see langword="true"/> если окно было подписано на уведомления, иначе <see langword="false"/>.
 		///	</returns>
-		internal static bool SubscribeWindowToClipboardUpdates(IntPtr windowHandler, out int? errorCode)
+		internal static bool TryToSubscribeWindowToClipboardUpdates(IntPtr windowHandler, out int? errorCode)
 		{
 			bool subscribed = NativeMethods.AddClipboardFormatListener(windowHandler);
 			errorCode = subscribed
@@ -38,7 +38,7 @@ namespace Clipboard.Native
 		/// <returns>
 		///		<see langword="true"/> если окно было отписано, иначе <see langword="false"/>.
 		///	</returns>
-		internal static bool UnsubscribeWindowFromClipboardUpdates(IntPtr windowHandler, out int? errorCode) // TODO: документация.
+		internal static bool TryToUnsubscribeWindowFromClipboardUpdates(IntPtr windowHandler, out int? errorCode) // TODO: документация.
 		{
 			bool unsubscribed = NativeMethods.RemoveClipboardFormatListener(windowHandler);
 			errorCode = unsubscribed
@@ -63,7 +63,7 @@ namespace Clipboard.Native
 		/// <returns>
 		///		<see langword="true"/> если эксклюзивный доступ получен, иначе <see langword="false"/>.
 		/// </returns>
-		internal static bool GetExclusiveClipboardControl(IntPtr windowHandler, out ClipboardExclusiveAccessToken accessToken, out int? errorCode)
+		internal static bool TryToGetExclusiveClipboardControl(IntPtr windowHandler, out ClipboardExclusiveAccessToken accessToken, out int? errorCode)
 		{
 			bool controlGranted = NativeMethods.OpenClipboard(windowHandler);
 			errorCode = controlGranted
@@ -83,7 +83,7 @@ namespace Clipboard.Native
 		/// <returns>
 		///		<see langword="true"/> если эксклюзивный доступ возвращен, иначе <see langword="false"/>.
 		/// </returns>
-		internal static bool ReturnExclusiveClipboardControl(out int? errorCode)
+		internal static bool TryToReturnExclusiveClipboardControl(out int? errorCode)
 		{
 			bool controlReturned = NativeMethods.CloseClipboard();
 			errorCode = controlReturned
@@ -96,7 +96,7 @@ namespace Clipboard.Native
 		/// Возвращает количество форматов в которых представлены данные находящиеся в буфере обмена.
 		/// </summary>
 		/// <returns>Количество форматов данных.</returns>
-		internal static bool CountPresentedFormats(out int formatsCount, out int? errorCode)
+		internal static bool TryToCountPresentedFormats(out int formatsCount, out int? errorCode)
 		{
 			//https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-countclipboardformats#return-value
 			const int ZeroFormats = 0;
@@ -136,7 +136,7 @@ namespace Clipboard.Native
 		/// Получает коллекцию имён форматов в которых представлены данные в буфере обмена.
 		/// </summary>
 		/// <returns>Имена форматов данных или пустая коллекция при ошибке.</returns>
-		internal static bool GetPresentedFormats(IntPtr windowHandler, out IReadOnlyCollection<string>? formats, out int? errorCode)
+		internal static bool TryToGetPresentedFormats(IntPtr windowHandler, out IReadOnlyCollection<string>? formats, out int? errorCode)
 		{
 			const int DefaultFormatId = 0; // https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumclipboardformats#parameters
 			const int LastFormatId = 0; // https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumclipboardformats#return-value
@@ -144,7 +144,7 @@ namespace Clipboard.Native
 
 			List<string>? formatsFound = null;
 			bool result;
-			if (GetExclusiveClipboardControl(windowHandler, out var accessToken, out errorCode))
+			if (TryToGetExclusiveClipboardControl(windowHandler, out var accessToken, out errorCode))
 			{
 				using (accessToken)
 				{
@@ -268,10 +268,10 @@ namespace Clipboard.Native
 		/// <returns>
 		/// <see langword="true"/> если очищение произведено, иначе <see langword="false"/>.
 		/// </returns>
-		internal static bool ClearClipboard(IntPtr windowHandler, out int? errorCode)
+		internal static bool TryToClearClipboard(IntPtr windowHandler, out int? errorCode)
 		{
 			bool isCleared;
-			if (GetExclusiveClipboardControl(windowHandler, out var accessToken, out errorCode))
+			if (TryToGetExclusiveClipboardControl(windowHandler, out var accessToken, out errorCode))
 			{
 				using (accessToken)
 				{
@@ -295,7 +295,7 @@ namespace Clipboard.Native
 		/// к нему.
 		/// </summary>
 		/// <returns>Идентификатор окна обладающего эксклюзивным доступом к системному буферу обмена.</returns>
-		internal static bool GetWindowWithExclusiveControl(out IntPtr? window, out int? errorCode)
+		internal static bool TryToGetWindowWithExclusiveControl(out IntPtr? window, out int? errorCode)
 		{
 			IntPtr NoWindow = IntPtr.Zero;
 			IntPtr EmptyWindow = IntPtr.Zero;
@@ -323,10 +323,10 @@ namespace Clipboard.Native
 			}
 			return windowFound;
 		}
-		internal static bool TryGetClipboardData(IntPtr windowHandler, UInt16 formatId, out IntPtr? dataPtr, out int? errorCode)
+		internal static bool TryToGetClipboardData(IntPtr windowHandler, UInt16 formatId, out IntPtr? dataPtr, out int? errorCode)
 		{
 			bool dataRetrieved = true;
-			if (GetExclusiveClipboardControl(windowHandler, out var accessToken, out errorCode))
+			if (TryToGetExclusiveClipboardControl(windowHandler, out var accessToken, out errorCode))
 			{
 				using (accessToken)
 				{
@@ -347,7 +347,7 @@ namespace Clipboard.Native
 		}
 
 		#region Memory
-		internal static bool TryGetGlobalSize(IntPtr memPtr, out uint? size, out int? errorCode)
+		internal static bool TryToGetGlobalSize(IntPtr memPtr, out uint? size, out int? errorCode)
 		{
 			errorCode = null;
 			size = 0;
@@ -419,7 +419,7 @@ namespace Clipboard.Native
 				int currentTry = 0;
 				while (true)
 				{
-					bool unlocked = ReturnExclusiveClipboardControl(out _);
+					bool unlocked = TryToReturnExclusiveClipboardControl(out _);
 					if (unlocked)
 					{
 						break;

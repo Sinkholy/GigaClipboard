@@ -354,7 +354,7 @@ namespace Clipboard
 
 		public void ClearClipboard()
 		{
-			if (!NativeMethodsWrapper.ClearClipboard(clipboardWindow.Handler, out var errorCode))
+			if (!NativeMethodsWrapper.TryToClearClipboard(clipboardWindow.Handler, out var errorCode))
 			{
 				// TODO: логирование 
 			}
@@ -368,7 +368,7 @@ namespace Clipboard
 		/// <exception cref="ExclusiveControlException">Если не удалось получить или вернуть эксклюзивный доступ к системному буферу обмена.</exception>
 		IReadOnlyCollection<string> GetPresentedFormats()
 		{
-			if (!NativeMethodsWrapper.GetPresentedFormats(clipboardWindow.Handler, out var formats, out int? errorCode))
+			if (!NativeMethodsWrapper.TryToGetPresentedFormats(clipboardWindow.Handler, out var formats, out int? errorCode))
 			{
 				formats = Array.Empty<string>();
 			}
@@ -377,7 +377,7 @@ namespace Clipboard
 		}
 		int GetClipboardFormatsCount()
 		{
-			var formatsCounted = NativeMethodsWrapper.CountPresentedFormats(out int formatsCount, out int? errorCode);
+			var formatsCounted = NativeMethodsWrapper.TryToCountPresentedFormats(out int formatsCount, out int? errorCode);
 			if (!formatsCounted)
 			{
 				// TODO: логировать ошибку.
@@ -470,7 +470,7 @@ namespace Clipboard
 				bool subscribed;
 				while (true)
 				{
-					subscribed = NativeMethodsWrapper.SubscribeWindowToClipboardUpdates(windowHandlerSource.Handle, out int? errorCode);
+					subscribed = NativeMethodsWrapper.TryToSubscribeWindowToClipboardUpdates(windowHandlerSource.Handle, out int? errorCode);
 					if (subscribed)
 					{
 						break;
@@ -543,7 +543,7 @@ namespace Clipboard
 				bool unsubscribed;
 				while (true)
 				{
-					unsubscribed = NativeMethodsWrapper.UnsubscribeWindowFromClipboardUpdates(windowHandlerSource.Handle, out int? errorCode);
+					unsubscribed = NativeMethodsWrapper.TryToUnsubscribeWindowFromClipboardUpdates(windowHandlerSource.Handle, out int? errorCode);
 					if (unsubscribed)
 					{
 						break;
@@ -617,7 +617,7 @@ namespace Clipboard
 				bool controlGranted;
 				while (true)
 				{
-					controlGranted = NativeMethodsWrapper.GetExclusiveClipboardControl(Handler, out accessToken, out int? errorCode);
+					controlGranted = NativeMethodsWrapper.TryToGetExclusiveClipboardControl(Handler, out accessToken, out int? errorCode);
 					if (controlGranted)
 					{
 						break;
@@ -685,7 +685,7 @@ namespace Clipboard
 				bool controlReturned;
 				while (true)
 				{
-					controlReturned = NativeMethodsWrapper.ReturnExclusiveClipboardControl(out int? errorCode);
+					controlReturned = NativeMethodsWrapper.TryToReturnExclusiveClipboardControl(out int? errorCode);
 					if (controlReturned)
 					{
 						break;
