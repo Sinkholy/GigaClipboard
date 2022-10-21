@@ -306,7 +306,62 @@ namespace Clipboard.Native
 			}
 			return windowFound;
 		}
+		internal static bool TryGetClipboardData(UInt16 formatId, out IntPtr? dataPtr, out int? errorCode)
+		{
+			errorCode = null;
 
+			bool dataRetrieved = true;
+			dataPtr = NativeMethods.GetClipboardData(formatId);
+			if (dataPtr == IntPtr.Zero)
+			{
+				dataRetrieved = !IsErrorOccured(out errorCode);
+			}
+
+			return dataRetrieved;
+		}
+		internal static bool TryGetGlobalSize(IntPtr memPtr, out uint? size, out int? errorCode)
+		{
+			errorCode = null;
+			size = 0;
+
+			bool successed = true;
+			var sizePtr = NativeMethods.GlobalSize(memPtr);
+			if (sizePtr != UIntPtr.Zero)
+			{
+				size = (uint)sizePtr;
+			}
+			else
+			{
+				successed = !IsErrorOccured(out errorCode);
+			}
+
+			return successed;
+		}
+		internal static bool TryToGlobalLock(IntPtr memPtr, out IntPtr? lockedMemPtr, out int? errorCode)
+		{
+			errorCode = null;
+
+			bool locked = true;
+			lockedMemPtr = NativeMethods.GlobalLock(memPtr);
+			if (lockedMemPtr == IntPtr.Zero)
+			{
+				locked = !IsErrorOccured(out errorCode);
+			}
+
+			return locked;
+		}
+		internal static bool TryToGlobalUnlock(IntPtr lockedMemPtr, out int? errorCode)
+		{
+			errorCode = null;
+
+			bool unlocked = NativeMethods.GlobalUnlock(lockedMemPtr);
+			if (!unlocked)
+			{
+				unlocked = !IsErrorOccured(out errorCode);
+			}
+
+			return unlocked;
+		}
 		/// <summary>
 		/// 
 		/// </summary>
