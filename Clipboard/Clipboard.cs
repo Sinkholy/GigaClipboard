@@ -194,7 +194,7 @@ namespace Clipboard
 		/// </returns>
 		BitmapSource? GetImage()
 		{
-			return SystemClipboard.GetImage();
+			return SystemClipboard.GetImage(); // TODO: оно бывает падает с исключением.
 		}
 		/// <summary>
 		/// Запрашивает данные из буфера обмена в формате коллекции путей к расположению файлов на дисковой системе 
@@ -247,7 +247,7 @@ namespace Clipboard
 				}
 				else
 				{
-					throw new ArgumentException(DataDoesNotMatchTypeExceptionMessage, nameof(data)); 
+					throw new ArgumentException(DataDoesNotMatchTypeExceptionMessage, nameof(data));
 				}
 			}
 			void SetImage()
@@ -288,7 +288,7 @@ namespace Clipboard
 				}
 				else
 				{
-					throw new ArgumentException(DataDoesNotMatchTypeExceptionMessage, nameof(data)); 
+					throw new ArgumentException(DataDoesNotMatchTypeExceptionMessage, nameof(data));
 				}
 
 				StringCollection ConvertCollectionToSpecialized(IEnumerable<string> enumerable)
@@ -354,7 +354,7 @@ namespace Clipboard
 
 		public void ClearClipboard()
 		{
-			if(!NativeMethodsWrapper.ClearClipboard(out var errorCode))
+			if (!NativeMethodsWrapper.ClearClipboard(clipboardWindow.Handler, out var errorCode))
 			{
 				// TODO: логирование 
 			}
@@ -368,25 +368,9 @@ namespace Clipboard
 		/// <exception cref="ExclusiveControlException">Если не удалось получить или вернуть эксклюзивный доступ к системному буферу обмена.</exception>
 		IReadOnlyCollection<string> GetPresentedFormats()
 		{
-			// Для опроса буфера обмена необходимо получить эксклюзивный доступ.
-			var exclusiveControlGranted = clipboardWindow.GetExclusiveAccess(out var errors);
-			if (!exclusiveControlGranted)
+			if (!NativeMethodsWrapper.GetPresentedFormats(clipboardWindow.Handler, out var formats, out int? errorCode))
 			{
-				throw new ExclusiveControlException("Не удалось получить эксклюзивный контроль " +
-					"над системным буфером обмена.");
-			}
-
-			if (!NativeMethodsWrapper.GetPresentedFormats(out var formats, out int? errorCode))
-			{
-				// TODO: логирование появления ошибки.
 				formats = Array.Empty<string>();
-			}
-
-			var exclisiveControlReturned = clipboardWindow.ReturnExclusiveAccess(out errors);
-			if (!exclisiveControlReturned)
-			{
-				throw new ExclusiveControlException("Не удалось вернуть эксклюзивный контроль " +
-					"над системным буфером обмена.");
 			}
 
 			return formats;
@@ -414,7 +398,7 @@ namespace Clipboard
 		}
 
 		#region Disposing
-		public void Dispose()
+		public void Dispose() // TODO: разобраться с dispose-паттерном в C#.
 		{
 			var unsubscribed = clipboardWindow.UnsubscribeFromClipboardUpdates(out var errors);
 			if (!unsubscribed)
@@ -624,7 +608,7 @@ namespace Clipboard
 					errorsLazy.Value.Add(error);
 				}
 			}
-			internal bool GetExclusiveAccess(out ICollection<NativeError>? errors)
+			internal bool GetExclusiveAccess(out NativeMethodsWrapper.ClipboardExclusiveAccessToken accessToken, out ICollection<NativeError>? errors)
 			{
 				const int RetryCount = 5;
 
@@ -633,7 +617,7 @@ namespace Clipboard
 				bool controlGranted;
 				while (true)
 				{
-					controlGranted = NativeMethodsWrapper.GetExclusiveClipboardControl(Handler, out int? errorCode);
+					controlGranted = NativeMethodsWrapper.GetExclusiveClipboardControl(Handler, out accessToken, out int? errorCode);
 					if (controlGranted)
 					{
 						break;

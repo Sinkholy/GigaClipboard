@@ -63,16 +63,16 @@ namespace Clipboard.Native
 		/// <returns>
 		///		<see langword="true"/> если эксклюзивный доступ получен, иначе <see langword="false"/>.
 		/// </returns>
-		internal static bool GetExclusiveClipboardControl(IntPtr windowHandler, out int? errorCode)
+		internal static bool GetExclusiveClipboardControl(IntPtr windowHandler, out ClipboardExclusiveAccessToken accessToken, out int? errorCode)
 		{
 			bool controlGranted = NativeMethods.OpenClipboard(windowHandler);
 			errorCode = controlGranted
 					? null
 					: GetLastNativeError();
+			accessToken = new ClipboardExclusiveAccessToken();
 
 			return controlGranted;
 		}
-
 		/// <summary>
 		/// Возвращает эксклюзивный доступ к системному буферу обмена.
 		/// </summary>
@@ -135,63 +135,70 @@ namespace Clipboard.Native
 		/// <summary>
 		/// Получает коллекцию имён форматов в которых представлены данные в буфере обмена.
 		/// </summary>
-		/// <remarks>
-		/// Перед вызовом этой функции необходимо получить эксклюзивный доступ к системному буферу обмену с помощью <see cref="NativeMethodsWrapper.GetExclusiveClipboardControl(IntPtr, uint)"/>,
-		/// иначе результатом выполнения функции будет пустая коллекция;
-		/// </remarks>
 		/// <returns>Имена форматов данных или пустая коллекция при ошибке.</returns>
-		internal static bool GetPresentedFormats(out IReadOnlyCollection<string>? formats, out int? errorCode)
+		internal static bool GetPresentedFormats(IntPtr windowHandler, out IReadOnlyCollection<string>? formats, out int? errorCode)
 		{
 			const int DefaultFormatId = 0; // https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumclipboardformats#parameters
 			const int LastFormatId = 0; // https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumclipboardformats#return-value
 			const int ErrorId = 0; // https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumclipboardformats#return-value
 
-			List<string> formatsFound = new(10);
+			List<string>? formatsFound = null;
 			bool result;
-			uint currentFormatId = DefaultFormatId;
-			while (true)
+			if (GetExclusiveClipboardControl(windowHandler, out var accessToken, out errorCode))
 			{
-				currentFormatId = GetNextFormatId(currentFormatId);
-				// Следуя документации Microsoft метод EnumClipboardFormats
-				// возвращает 0 в случаях:
-				// a) Больше нет форматов для перечисления.
-				// b) Произошла ошибка при обработке запроса.
-				// Так как оба случая идентифицируются одним и тем же значением
-				// приходится явно выяснять у системы произошла ли ошибка в случае получения этого значения.
-				if (currentFormatId is LastFormatId or ErrorId)
+				using (accessToken)
 				{
-					if (IsErrorOccured(out errorCode))
+					formatsFound = new(10);
+					uint currentFormatId = DefaultFormatId;
+					while (true)
 					{
-						// Произошла ошибка.
-						result = false;
-					}
-					else
-					{
-						// Больше нет форматов для перечисления.
-						result = true;
-					}
-					break;
-				}
-				else
-				{
-					if (TryGetFormatName(currentFormatId, out string? formatName, out int? formatNameSearchErrorCode))
-					{
-						formatsFound.Add(formatName);
-					}
-					else
-					{
-						// Мы попадаем сюда с ошибкой - нужно ли её логировать?
-						// TODO: нужно решить как поступать в случае если имя формато не было найдено.
-						// В данный момент в результат просто добавляется числовой идентификатор формата,
-						// но это никак не отражено ни в сигнатуре метода ни в его заголовочном комментарии.
-						formatsFound.Add(currentFormatId.ToString());
+						currentFormatId = GetNextFormatId(currentFormatId);
+						// Следуя документации Microsoft метод EnumClipboardFormats
+						// возвращает 0 в случаях:
+						// a) Больше нет форматов для перечисления.
+						// b) Произошла ошибка при обработке запроса.
+						// Так как оба случая идентифицируются одним и тем же значением
+						// приходится явно выяснять у системы произошла ли ошибка в случае получения этого значения.
+						if (currentFormatId is LastFormatId or ErrorId)
+						{
+							if (IsErrorOccured(out errorCode))
+							{
+								// Произошла ошибка.
+								result = false;
+							}
+							else
+							{
+								// Больше нет форматов для перечисления.
+								result = true;
+							}
+							break;
+						}
+						else
+						{
+							if (TryGetFormatName(currentFormatId, out string? formatName, out int? formatNameSearchErrorCode))
+							{
+								formatsFound.Add(formatName);
+							}
+							else
+							{
+								// Мы попадаем сюда с ошибкой - нужно ли её логировать?
+								// TODO: нужно решить как поступать в случае если имя формато не было найдено.
+								// В данный момент в результат просто добавляется числовой идентификатор формата,
+								// но это никак не отражено ни в сигнатуре метода ни в его заголовочном комментарии.
+								formatsFound.Add(currentFormatId.ToString());
+							}
+						}
 					}
 				}
 			}
+			else
+			{
+				result = false;
+			}
 
 			formats = result
-				? formatsFound
-				: null;
+					? formatsFound
+					: null;
 			return result;
 
 			static uint GetNextFormatId(uint currentFormatId)
@@ -257,20 +264,30 @@ namespace Clipboard.Native
 		/// <summary>
 		/// Очищает системный буфер обмена от содержимого и освобождает ресурсы. 
 		/// </summary>
-		/// <remarks>
-		/// Перед вызовом этой функции необходимо получить эксклюзивный доступ к системному буферу обмену с помощью <see cref="NativeMethodsWrapper.GetExclusiveClipboardControl(IntPtr, uint)"/>,
-		/// иначе результатом выполнения функции будет ошибка;
-		/// </remarks>
 		/// <param name="retryCount">Количество попыток очищения буфера в случае неудачи.</param>
 		/// <returns>
 		/// <see langword="true"/> если очищение произведено, иначе <see langword="false"/>.
 		/// </returns>
-		internal static bool ClearClipboard(out int? errorCode)
+		internal static bool ClearClipboard(IntPtr windowHandler, out int? errorCode)
 		{
-			bool isCleared = NativeMethods.EmptyClipboard();
-			errorCode = isCleared
-				? null
-				: GetLastNativeError();
+			bool isCleared;
+			if (GetExclusiveClipboardControl(windowHandler, out var accessToken, out errorCode))
+			{
+				using (accessToken)
+				{
+					isCleared = NativeMethods.EmptyClipboard();
+					if (!isCleared)
+					{
+						IsErrorOccured(out errorCode);
+					}
+				}
+			}
+			else
+			{
+				isCleared = false;
+				IsErrorOccured(out errorCode);
+			}
+
 			return isCleared;
 		}
 		/// <summary>
@@ -306,19 +323,30 @@ namespace Clipboard.Native
 			}
 			return windowFound;
 		}
-		internal static bool TryGetClipboardData(UInt16 formatId, out IntPtr? dataPtr, out int? errorCode)
+		internal static bool TryGetClipboardData(IntPtr windowHandler, UInt16 formatId, out IntPtr? dataPtr, out int? errorCode)
 		{
-			errorCode = null;
-
 			bool dataRetrieved = true;
-			dataPtr = NativeMethods.GetClipboardData(formatId);
-			if (dataPtr == IntPtr.Zero)
+			if (GetExclusiveClipboardControl(windowHandler, out var accessToken, out errorCode))
 			{
-				dataRetrieved = !IsErrorOccured(out errorCode);
+				using (accessToken)
+				{
+					dataPtr = NativeMethods.GetClipboardData(formatId);
+					if (dataPtr == IntPtr.Zero)
+					{
+						dataRetrieved = !IsErrorOccured(out errorCode);
+					}
+				}
+			}
+			else
+			{
+				dataPtr = null;
+				dataRetrieved = false;
 			}
 
 			return dataRetrieved;
 		}
+
+		#region Memory
 		internal static bool TryGetGlobalSize(IntPtr memPtr, out uint? size, out int? errorCode)
 		{
 			errorCode = null;
@@ -337,16 +365,19 @@ namespace Clipboard.Native
 
 			return successed;
 		}
-		internal static bool TryToGlobalLock(IntPtr memPtr, out IntPtr? lockedMemPtr, out int? errorCode)
+		internal static bool TryToGlobalLock(IntPtr memPtr, out LockedMemory lockedMemory, out int? errorCode)
 		{
 			errorCode = null;
 
 			bool locked = true;
-			lockedMemPtr = NativeMethods.GlobalLock(memPtr);
+			var lockedMemPtr = NativeMethods.GlobalLock(memPtr);
 			if (lockedMemPtr == IntPtr.Zero)
 			{
 				locked = !IsErrorOccured(out errorCode);
 			}
+			lockedMemory = locked 
+						? new LockedMemory(lockedMemPtr) 
+						: new LockedMemory();
 
 			return locked;
 		}
@@ -362,6 +393,9 @@ namespace Clipboard.Native
 
 			return unlocked;
 		}
+		#endregion
+
+		#region Errors
 		/// <summary>
 		/// 
 		/// </summary>
@@ -376,7 +410,58 @@ namespace Clipboard.Native
 		{
 			return Marshal.GetLastWin32Error();
 		}
+		#endregion
 
+		internal readonly ref struct ClipboardExclusiveAccessToken
+		{
+			public void Dispose()
+			{
+				int currentTry = 0;
+				while (true)
+				{
+					bool unlocked = ReturnExclusiveClipboardControl(out _);
+					if (unlocked)
+					{
+						break;
+					}
+					else if (++currentTry == 10)
+					{
+						break;
+					}
+				}
+			}
+		}
+		internal readonly ref struct LockedMemory
+		{
+			readonly bool valid = false;
+			readonly internal IntPtr Pointer;
+
+			internal LockedMemory(IntPtr pointer)
+			{
+				valid = true;
+				Pointer = pointer;
+			}
+
+			public void Dispose()
+			{
+				if (valid)
+				{
+					int currentTry = 0;
+					while (true)
+					{
+						bool unlocked = TryToGlobalUnlock(Pointer, out _);
+						if (unlocked)
+						{
+							break;
+						}
+						else if (++currentTry == 10)
+						{
+							break;
+						}
+					}
+				}
+			}
+		}
 		/// <summary>
 		/// Класс инкапсулирует предопределенные форматы данных и методы доступа к ним.
 		/// </summary>
