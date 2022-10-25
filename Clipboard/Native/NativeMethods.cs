@@ -75,14 +75,14 @@ namespace Clipboard.Native
 
 		[DllImport("user32.dll", SetLastError = true)]
 		internal static extern IntPtr GetOpenClipboardWindow();
-		[DllImport("kernel32.dll")]
+		[DllImport("kernel32.dll", SetLastError = true)]
 		internal static extern IntPtr GlobalLock(IntPtr hMem);
-		[DllImport("kernel32.dll")]
+		[DllImport("kernel32.dll", SetLastError = true)]
 		[return: MarshalAs(UnmanagedType.Bool)]
 		internal static extern bool GlobalUnlock(IntPtr hMem);
-		[DllImport("kernel32.dll")]
+		[DllImport("kernel32.dll", SetLastError = true)]
 		internal static extern UIntPtr GlobalSize(IntPtr hMem);
-		[DllImport("user32.dll")]
+		[DllImport("user32.dll", SetLastError = true)]
 		internal static extern IntPtr GetClipboardData(uint uFormat);
 	}
 }
