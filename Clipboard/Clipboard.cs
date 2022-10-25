@@ -9,6 +9,7 @@ using Clipboard.Native;
 
 using API;
 using static API.IClipboard;
+using System.Runtime.InteropServices;
 
 namespace Clipboard
 {
@@ -16,7 +17,7 @@ namespace Clipboard
 	{
 		readonly ClipboardWindow clipboardWindow;
 		bool isDisposed;
-
+		
 		public Clipboard()
 		{
 			isDisposed = false;
@@ -100,12 +101,12 @@ namespace Clipboard
 							? null
 							: new ClipboardData<string>(text, DataType.Text);
 			}
-			ClipboardData<BitmapSource>? GetImage()
+			ClipboardData<BinaryData>? GetImage()
 			{
 				var image = this.GetImage();
 				return image is null
 							? null
-							: new ClipboardData<BitmapSource>(image, DataType.Image);
+							: new ClipboardData<BinaryData>(new BinaryData(image), DataType.Image);
 			}
 			ClipboardData<Stream>? GetAudio()
 			{
@@ -192,9 +193,42 @@ namespace Clipboard
 		/// Данные находящиеся в буфере обмена если они могут быть представлены в формате изображения,
 		/// иначе <see langword="null"/>.
 		/// </returns>
-		BitmapSource? GetImage()
+		byte[]? GetImage()
 		{
-			return SystemClipboard.GetImage(); // TODO: оно бывает падает с исключением.
+			const ushort CF_DIBV5 = 17;
+
+			var imageFormatId = CF_DIBV5;
+			byte[] imageBinaryData;
+			if (NativeMethodsWrapper.TryToGetClipboardData(clipboardWindow.Handler, imageFormatId, out var dataPtr, out var errorCode)
+			 && NativeMethodsWrapper.TryToGlobalLock(dataPtr.Value, out var lockedMemory, out errorCode))
+			{
+				using (lockedMemory)
+				{
+					imageBinaryData = CopyBinaryFromUnmanagedMemory(lockedMemory.Pointer);
+				}
+			}
+			else
+			{
+				imageBinaryData = Array.Empty<byte>();
+				// TODO: логирование ошибки.
+			}
+
+			return imageBinaryData;
+
+			byte[] CopyBinaryFromUnmanagedMemory(IntPtr unmanagedMemoryPointer)
+			{
+				if (NativeMethodsWrapper.TryToGetGlobalSize(unmanagedMemoryPointer, out var size, out var errorCode))
+				{
+					var buffer = new byte[size.Value];
+					Marshal.Copy(unmanagedMemoryPointer, buffer, 0, (int)size.Value);
+					return buffer;
+				}
+				else
+				{
+					return Array.Empty<byte>(); // TODO: затычка.
+												// TODO: ошибка
+				}
+			}
 		}
 		/// <summary>
 		/// Запрашивает данные из буфера обмена в формате коллекции путей к расположению файлов на дисковой системе 

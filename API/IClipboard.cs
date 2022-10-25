@@ -44,5 +44,23 @@
 
 			public T Data { get; init; }
 		}
+		public class BinaryData
+		{
+			readonly byte[] binaryBytes;
+
+			public BinaryData(byte[] binaryBytes)
+			{
+				this.binaryBytes = binaryBytes;
+			}
+
+			public byte[] GetBytes()
+			{
+				return binaryBytes;
+			}
+			public MemoryStream GetStream()
+			{
+				return new MemoryStream(binaryBytes);
+			}
+		}
 	}
 }
