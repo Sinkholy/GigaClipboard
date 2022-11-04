@@ -17,12 +17,14 @@ namespace Clipboard
 	{
 		readonly ClipboardWindow clipboardWindow;
 		bool isDisposed;
-		
+		ClipboardData lastObtainedData;
+
 		public Clipboard()
 		{
 			isDisposed = false;
+			SuppressDuplicates = true;
 			clipboardWindow = new ClipboardWindow();
-			clipboardWindow.NewClipboardDataObtained += NewClipboardDataObtained;
+			clipboardWindow.NewClipboardDataObtained += OnNewClipboardDataObtained;
 
 			// Подписание окна-слушателя на получение необходимых сообщений.
 			var subscribed = clipboardWindow.SubscribeToClipboardUpdates(out var errors);
@@ -33,10 +35,29 @@ namespace Clipboard
 			}
 		}
 
+		private void OnNewClipboardDataObtained()
+		{
+			bool shouldRiseEvent = true;
+
+			if (SuppressDuplicates)
+			{
+				var newClipboardData = GetData();
+				var comparer = new ClipboardDataEqualityComparer();
+				bool isDuplicate = comparer.Equals(lastObtainedData, newClipboardData);
+				shouldRiseEvent = !isDuplicate;
+				lastObtainedData = newClipboardData;
+			}
+
+			if (shouldRiseEvent)
+			{
+				NewClipboardDataObtained();
+			}
+		}
 		/// <summary>
 		/// Сигнализирует о том, что в буфер обмена попали новые данные.
 		/// </summary>
 		public event Action NewClipboardDataObtained = delegate { };
+		public bool SuppressDuplicates { get; set; }
 
 		/// <summary>
 		/// Опрашивает системный буфер обмена на тип в котором хранятся данные и возвращает
@@ -247,7 +268,7 @@ namespace Clipboard
 			return SystemClipboard.GetFileDropList();
 		}
 		#endregion
-
+		
 		#region Data setter's
 		public void SetData(object data, DataType dataType)
 		{
@@ -808,6 +829,172 @@ namespace Clipboard
 			public void Dispose()
 			{
 				windowHandlerSource.Dispose();
+			}
+		}
+
+		class ClipboardDataEqualityComparer : IEqualityComparer<ClipboardData>
+		{
+			public bool Equals(ClipboardData? x, ClipboardData? y)
+			{
+				if (x is null || y is null)
+				{
+					return false;
+				}
+
+				if (x.DataType != y.DataType)
+				{
+					return false;
+				}
+				bool dataEqual = true;
+
+				switch (x.DataType)
+				{
+					case DataType.Text:
+						if (x is ClipboardData<string> xText &&
+							y is ClipboardData<string> yText)
+						{
+							dataEqual = CompareText(xText, yText);
+						}
+						else
+						{
+							// TODO: стоит ли здесь каким-то образом уведомлять о том, что данные не могут быть преобразованы?
+							dataEqual = false;
+						}
+						break;
+					case DataType.Image:
+						if (x is ClipboardData<BinaryData> xBinary &&
+							y is ClipboardData<BinaryData> yBinary)
+						{
+							dataEqual = CompareImages(xBinary, yBinary);
+						}
+						else
+						{
+							// TODO: стоит ли здесь каким-то образом уведомлять о том, что данные не могут быть преобразованы?
+							dataEqual = false;
+						}
+						break;
+					case DataType.Audio:
+						if (x is ClipboardData<Stream> xAudio &&
+							y is ClipboardData<Stream> yAudio)
+						{
+							dataEqual = CompareAudio(xAudio, yAudio);
+						}
+						else
+						{
+							// TODO: стоит ли здесь каким-то образом уведомлять о том, что данные не могут быть преобразованы?
+							dataEqual = false;
+						}
+						break;
+					case DataType.FileDrop:
+						if (x is ClipboardData<IReadOnlyCollection<string>> xFileDrop &&
+							y is ClipboardData<IReadOnlyCollection<string>> yFileDrop)
+						{
+							dataEqual = CompareFileDrop(xFileDrop, yFileDrop);
+						}
+						else
+						{
+							// TODO: стоит ли здесь каким-то образом уведомлять о том, что данные не могут быть преобразованы?
+							dataEqual = false;
+						}
+						break;
+				}
+
+				return dataEqual;
+			}
+
+			public int GetHashCode([DisallowNull] ClipboardData obj)
+			{
+				return obj.GetHashCode();
+			}
+
+			static bool CompareImages(ClipboardData<BinaryData> a, ClipboardData<BinaryData> b)
+			{
+				var aBinaryArray = a.Data.GetBytes();
+				var bBinaryArray = b.Data.GetBytes();
+
+				// TODO: возможно нужна проверка на пустые массивы?
+
+				if (aBinaryArray.Length != bBinaryArray.Length)
+				{
+					return false;
+				}
+
+				bool distinctionFound = false;
+				for (int i = 0; i < aBinaryArray.Length; i++)
+				{
+					distinctionFound = aBinaryArray[i] != bBinaryArray[i];
+
+					if (distinctionFound)
+					{
+						break;
+					}
+				}
+				return !distinctionFound;
+			}
+			static bool CompareFileDrop(ClipboardData<IReadOnlyCollection<string>> a,
+										ClipboardData<IReadOnlyCollection<string>> b)
+			{
+				var aCollection = a.Data;
+				var bCollection = b.Data;
+
+				if (aCollection.Count != bCollection.Count)
+				{
+					return false;
+				}
+
+				bool distinctionFound = false;
+				for (int i = 0; i < aCollection.Count; i++)
+				{
+					var aElement = aCollection.ElementAt(i);
+					var bElement = bCollection.ElementAt(i);
+
+					distinctionFound = !string.Equals(aElement, bElement, StringComparison.Ordinal);
+
+					if (distinctionFound)
+					{
+						break;
+					}
+				}
+
+				return !distinctionFound;
+			}
+			static bool CompareText(ClipboardData<string> a, ClipboardData<string> b)
+			{
+				var aText = a.Data;
+				var bText = b.Data;
+
+				return string.Equals(aText, bText, StringComparison.Ordinal);
+			}
+			static bool CompareAudio(ClipboardData<Stream> a, ClipboardData<Stream> b)
+			{
+				const int bufferSize = 128;
+
+				var aStream = a.Data;
+				var bStream = b.Data;
+
+				if (aStream.Length != bStream.Length)
+				{
+					return false;
+				}
+
+				bool distinctionFound = false;
+
+				var aBuffer = new byte[bufferSize];
+				var bBuffer = new byte[bufferSize];
+				while (aStream.Read(aBuffer) > 0)
+				{
+					bStream.Read(bBuffer);
+					distinctionFound = !aBuffer.SequenceEqual(bBuffer);
+
+					if (distinctionFound)
+					{
+						break;
+					}
+				}
+				aStream.Seek(0, SeekOrigin.Begin);
+				bStream.Seek(0, SeekOrigin.Begin);
+
+				return !distinctionFound;
 			}
 		}
 		#region Exceptions
