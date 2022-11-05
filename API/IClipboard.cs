@@ -12,6 +12,7 @@
 		public event Action NewClipboardDataObtained;
 
 		public DataType? GetDataType();
+		public ClipboardData GetData();
 		public ClipboardData<BinaryData>? GetImage();
 		public ClipboardData<string>? GetText();
 		public ClipboardData<IReadOnlyCollection<string>>? GetFileDrop();
@@ -38,6 +39,7 @@
 				DataType = dataType;
 			}
 
+			public abstract object? BoxedData { get; }
 			public DataType DataType { get; init; }
 		}
 		public class ClipboardData<T> : ClipboardData
@@ -49,6 +51,7 @@
 			}
 
 			public T Data { get; init; }
+			public override object? BoxedData => Data;
 		}
 		public class BinaryData
 		{
