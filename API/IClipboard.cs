@@ -12,9 +12,15 @@
 		public event Action NewClipboardDataObtained;
 
 		public DataType? GetDataType();
-		public ClipboardData? GetData();
+		public ClipboardData<BinaryData>? GetImage();
+		public ClipboardData<string>? GetText();
+		public ClipboardData<IReadOnlyCollection<string>>? GetFileDrop();
+		public ClipboardData<Stream>? GetAudio();
 
-		public void SetData(object data, DataType dataType);
+		public void SetImage(BinaryData imageData);
+		public void SetText(string text);
+		public void SetFileDrop(IReadOnlyCollection<string> fileDropData);
+		public void SetAudio(Stream audioStream);
 
 		public void ClearClipboard();
 

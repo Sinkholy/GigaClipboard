@@ -10,6 +10,7 @@ using Clipboard.Native;
 using API;
 using static API.IClipboard;
 using System.Runtime.InteropServices;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Clipboard
 {
@@ -114,37 +115,7 @@ namespace Clipboard
 				DataType.FileDrop => GetFileDrop(),
 				_ => null // TODO: ????
 			};
-
-			ClipboardData<string>? GetText()
-			{
-				var text = this.GetText();
-				return text is null
-							? null
-							: new ClipboardData<string>(text, DataType.Text);
-			}
-			ClipboardData<BinaryData>? GetImage()
-			{
-				var image = this.GetImage();
-				return image is null
-							? null
-							: new ClipboardData<BinaryData>(new BinaryData(image), DataType.Image);
-			}
-			ClipboardData<Stream>? GetAudio()
-			{
-				var audioStream = this.GetAudio();
-				return audioStream is null
-									? null
-									: new ClipboardData<Stream>(audioStream, DataType.Audio);
-			}
-			ClipboardData<StringCollection>? GetFileDrop()
-			{
-				var fileDrop = this.GetFileDrop();
-				return fileDrop is null
-								? null
-								: new ClipboardData<StringCollection>(fileDrop, DataType.FileDrop);
-			}
 		}
-
 		/// <summary>
 		/// Опрашивает буфер обмена на формат текста в котором хранятся данные затем 
 		/// запрашивает данные в соответствующем формате и возвращает их управляющей стороне.
@@ -157,7 +128,7 @@ namespace Clipboard
 		/// Данные находящиеся в буфере обмена если они могут быть представлены в формате текста,
 		/// иначе <see langword="null"/>.
 		/// </returns>
-		string? GetText()
+		public ClipboardData<string>? GetText()
 		{
 			string text = null;
 
@@ -186,7 +157,9 @@ namespace Clipboard
 				text = SystemClipboard.GetText(System.Windows.TextDataFormat.Text);
 			}
 
-			return text;
+			return text is not null 
+					? new ClipboardData<string>(text, DataType.Text)
+					: null;
 		}
 		/// <summary>
 		/// Запрашивает данные из буфера обмена в формате аудио-потока и возвращает их управляющей стороне.
@@ -199,9 +172,11 @@ namespace Clipboard
 		/// Данные находящиеся в буфере обмена если они могут быть представлены в формате аудио-потока,
 		/// иначе <see langword="null"/>.
 		/// </returns>
-		Stream? GetAudio()
+		public ClipboardData<Stream>? GetAudio()
 		{
-			return SystemClipboard.GetAudioStream();
+			return SystemClipboard.GetAudioStream() is Stream data
+					? new ClipboardData<Stream>(data, DataType.Audio)
+					: null;
 		}
 		/// <summary>
 		/// Запрашивает данные из буфера обмена в формате изображения и возвращает их управляющей стороне.
@@ -214,7 +189,7 @@ namespace Clipboard
 		/// Данные находящиеся в буфере обмена если они могут быть представлены в формате изображения,
 		/// иначе <see langword="null"/>.
 		/// </returns>
-		byte[]? GetImage()
+		public ClipboardData<BinaryData>? GetImage()
 		{
 			const ushort CF_DIBV5 = 17;
 
@@ -234,7 +209,9 @@ namespace Clipboard
 				// TODO: логирование ошибки.
 			}
 
-			return imageBinaryData;
+			return imageBinaryData.Length != 0
+											? new ClipboardData<BinaryData>(new BinaryData(imageBinaryData), DataType.Image)
+											: null;
 
 			byte[] CopyBinaryFromUnmanagedMemory(IntPtr unmanagedMemoryPointer)
 			{
@@ -263,99 +240,37 @@ namespace Clipboard
 		/// Данные находящиеся в буфере обмена если они могут быть представлены в коллекции путей к расположению файлов,
 		/// иначе <see langword="null"/>.
 		/// </returns>
-		StringCollection? GetFileDrop()
+		public ClipboardData<IReadOnlyCollection<string>>? GetFileDrop()
 		{
-			return SystemClipboard.GetFileDropList();
+			var rawFileDrop = SystemClipboard.GetFileDropList();
+			return rawFileDrop is not null
+								? new ClipboardData<IReadOnlyCollection<string>>(ConvertFromRaw(rawFileDrop), DataType.FileDrop)
+								: null;
+			
+			static IReadOnlyCollection<string> ConvertFromRaw(StringCollection rawFileDrop)
+			{
+				var converted = new List<string>(rawFileDrop.Count);
+				foreach (var file in rawFileDrop)
+				{
+					converted.Add(file);
+				}
+
+				return converted;
+			}
 		}
 		#endregion
-		
+
 		#region Data setter's
-		public void SetData(object data, DataType dataType)
+		/// <summary>
+		/// Инкапсулирует обращение к системному буферу обмена для формирования абстракции и
+		/// возможности использовать другой подход к обращению к системному буферу без больших
+		/// изменений исходного кода.
+		/// </summary>
+		public void SetText(string text)
 		{
-			const string DataDoesNotMatchTypeExceptionMessage = $"Данные в параметре {nameof(data)}, не могут быть преобразованы к соответствующему типу переданому в параметре {nameof(dataType)}";
+			VerifyParameterIsNotNull(text, nameof(text));
 
-			VerifyParameterIsNotNull(data, nameof(data));
-
-			switch (dataType)
-			{
-				case DataType.Text:
-					SetText();
-					break;
-				case DataType.Image:
-					SetImage();
-					break;
-				case DataType.Audio:
-					SetAudio();
-					break;
-				case DataType.FileDrop:
-					SetFileDrop();
-					break;
-				default: // TODO: что делать в default случае?
-					break;
-			}
-
-			void SetText()
-			{
-				if (data is string text)
-				{
-					this.SetText(text, System.Windows.TextDataFormat.UnicodeText);
-				}
-				else
-				{
-					throw new ArgumentException(DataDoesNotMatchTypeExceptionMessage, nameof(data));
-				}
-			}
-			void SetImage()
-			{
-				if (data is BitmapSource image)
-				{
-					this.SetImage(image);
-				}
-				else
-				{
-					throw new ArgumentException(DataDoesNotMatchTypeExceptionMessage, nameof(data));
-				}
-			}
-			void SetAudio()
-			{
-				if (data is byte[] audioBytes)
-				{
-					this.SetAudio(audioBytes);
-				}
-				else if (data is Stream audioStream)
-				{
-					this.SetAudio(audioStream);
-				}
-				else
-				{
-					throw new ArgumentException(DataDoesNotMatchTypeExceptionMessage, nameof(data));
-				}
-			}
-			void SetFileDrop()
-			{
-				if (data is StringCollection stringCollection)
-				{
-					this.SetFileDrop(stringCollection);
-				}
-				else if (data is IEnumerable<string> enumerable)
-				{
-					this.SetFileDrop(ConvertCollectionToSpecialized(enumerable));
-				}
-				else
-				{
-					throw new ArgumentException(DataDoesNotMatchTypeExceptionMessage, nameof(data));
-				}
-
-				StringCollection ConvertCollectionToSpecialized(IEnumerable<string> enumerable)
-				{
-					var specialized = new StringCollection();
-					foreach (var path in enumerable)
-					{
-						specialized.Add(path);
-					}
-					return specialized;
-				}
-			}
+			SystemClipboard.SetText(text, System.Windows.TextDataFormat.UnicodeText);
 		}
 
 		/// <summary>
@@ -363,37 +278,27 @@ namespace Clipboard
 		/// возможности использовать другой подход к обращению к системному буферу без больших
 		/// изменений исходного кода.
 		/// </summary>
-		void SetText(string value, System.Windows.TextDataFormat format)
+		public void SetAudio(Stream audioStream)
 		{
-			SystemClipboard.SetText(value, format);
-		}
+			VerifyParameterIsNotNull(audioStream, nameof(audioStream));
 
-		/// <summary>
-		/// Инкапсулирует обращение к системному буферу обмена для формирования абстракции и
-		/// возможности использовать другой подход к обращению к системному буферу без больших
-		/// изменений исходного кода.
-		/// </summary>
-		void SetAudio(Stream audioStream)
-		{
 			SystemClipboard.SetAudio(audioStream);
-		}
-		/// <summary>
-		/// Инкапсулирует обращение к системному буферу обмена для формирования абстракции и
-		/// возможности использовать другой подход к обращению к системному буферу без больших
-		/// изменений исходного кода.
-		/// </summary>
-		void SetAudio(byte[] audioBytes)
-		{
-			SystemClipboard.SetAudio(audioBytes);
 		}
 
 		/// <summary>
 		/// Помещает данные в буфер обмена в формате изображения. <see cref="ClipboardTextData"/>.
 		/// </summary>
 		/// <param name="image">Изображение которое необходимо установить в буфер обмена.</param>
-		void SetImage(BitmapSource image)
+		public void SetImage(BinaryData imageData)
 		{
-			SystemClipboard.SetImage(image);
+			VerifyParameterIsNotNull(imageData, nameof(imageData));
+			SystemClipboard.SetImage(ConvertBinaryDataToBitmapSource(imageData)); // TODO: заменить заменить на низкоуровневый вызов.
+
+			static BitmapSource ConvertBinaryDataToBitmapSource(BinaryData binaryData)
+			{
+				var stream = binaryData.GetStream();
+				return BitmapFrame.Create(stream);
+			}
 		}
 
 		/// <summary>
@@ -401,9 +306,21 @@ namespace Clipboard
 		/// возможности использовать другой подход к обращению к системному буферу без больших
 		/// изменений исходного кода.
 		/// </summary>
-		void SetFileDrop(StringCollection pathes)
+		public void SetFileDrop(IReadOnlyCollection<string> pathes)
 		{
-			SystemClipboard.SetFileDropList(pathes);
+			VerifyParameterIsNotNull(pathes, nameof(pathes));
+
+			SystemClipboard.SetFileDropList(ConvertCollectionToSpecialized(pathes)); // TODO: заменить на низкоуровневый вызов.
+
+			static StringCollection ConvertCollectionToSpecialized(IEnumerable<string> enumerable)
+			{
+				var specialized = new StringCollection();
+				foreach (var path in enumerable)
+				{
+					specialized.Add(path);
+				}
+				return specialized;
+			}
 		}
 		#endregion
 
