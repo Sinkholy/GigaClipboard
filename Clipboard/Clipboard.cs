@@ -157,7 +157,7 @@ namespace Clipboard
 				text = SystemClipboard.GetText(System.Windows.TextDataFormat.Text);
 			}
 
-			return text is not null 
+			return text is not null
 					? new ClipboardData<string>(text, DataType.Text)
 					: null;
 		}
@@ -246,7 +246,7 @@ namespace Clipboard
 			return rawFileDrop is not null
 								? new ClipboardData<IReadOnlyCollection<string>>(ConvertFromRaw(rawFileDrop), DataType.FileDrop)
 								: null;
-			
+
 			static IReadOnlyCollection<string> ConvertFromRaw(StringCollection rawFileDrop)
 			{
 				var converted = new List<string>(rawFileDrop.Count);
@@ -361,9 +361,9 @@ namespace Clipboard
 			return SystemClipboard.ContainsData(formatName);
 		}
 
-		static void VerifyParameterIsNotNull(object param, string paramName)
+		static void VerifyParameterIsNotNull<T>(T paramValue, string paramName)
 		{
-			if (param is null)
+			if (paramValue is null)
 			{
 				throw new ArgumentNullException(paramName);
 			}
