@@ -46,6 +46,8 @@ namespace Clipboard.Native
 		///	</returns>
 		[DllImport("user32.dll", SetLastError = true)]
 		internal static extern bool RemoveClipboardFormatListener(IntPtr hwnd);
+		[DllImport("user32.dll", SetLastError = true)]
+		internal static extern bool IsClipboardFormatAvailable(uint formatId);
 
 		[DllImport("user32.dll", SetLastError = true)]
 		internal static extern int CountClipboardFormats();

@@ -206,6 +206,18 @@ namespace Clipboard.Native
 				return NativeMethods.EnumClipboardFormats(currentFormatId);
 			}
 		}
+		internal static bool IsClipboardFormatAvailable(uint formatId, out int? errorCode)
+		{
+			errorCode = null;
+
+			var availabe = NativeMethods.IsClipboardFormatAvailable(formatId);
+			if (!availabe)
+			{
+				IsErrorOccured(out errorCode);
+			}
+
+			return availabe;
+		}
 		/// <summary>
 		/// Запрашивает в системном буфере обмена имя формата данных основываясь на его идентификаторе.
 		/// </summary>
