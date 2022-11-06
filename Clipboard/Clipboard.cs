@@ -1,7 +1,7 @@
 ﻿using System.Collections.Specialized;
 using System.Windows.Interop;
 
-using SystemClipboard = System.Windows.Clipboard;
+using WPFClipboard = System.Windows.Clipboard;
 
 using System.IO;
 using System.Windows.Media.Imaging;
@@ -73,15 +73,15 @@ namespace Clipboard
 			{
 				dataType = DataType.Text;
 			}
-			else if (SystemClipboard.ContainsImage())
+			else if (WPFClipboard.ContainsImage())
 			{
 				dataType = DataType.Image;
 			}
-			else if (SystemClipboard.ContainsFileDropList())
+			else if (WPFClipboard.ContainsFileDropList())
 			{
 				dataType = DataType.FileDrop;
 			}
-			else if (SystemClipboard.ContainsAudio())
+			else if (WPFClipboard.ContainsAudio())
 			{
 				dataType = DataType.Audio;
 			}
@@ -94,12 +94,12 @@ namespace Clipboard
 				// имеют разную полноту описания.
 				// Здесь данные расположены от наиболее описательного к наименее описательному.
 				// https://docs.microsoft.com/en-us/windows/win32/dataxchg/clipboard-formats#multiple-clipboard-formats
-				return SystemClipboard.ContainsText(System.Windows.TextDataFormat.Xaml) ||
-					   SystemClipboard.ContainsText(System.Windows.TextDataFormat.CommaSeparatedValue) ||
-					   SystemClipboard.ContainsText(System.Windows.TextDataFormat.Html) ||
-					   SystemClipboard.ContainsText(System.Windows.TextDataFormat.Rtf) ||
-					   SystemClipboard.ContainsText(System.Windows.TextDataFormat.UnicodeText) ||
-					   SystemClipboard.ContainsText(System.Windows.TextDataFormat.Text);
+				return WPFClipboard.ContainsText(System.Windows.TextDataFormat.Xaml) ||
+					   WPFClipboard.ContainsText(System.Windows.TextDataFormat.CommaSeparatedValue) ||
+					   WPFClipboard.ContainsText(System.Windows.TextDataFormat.Html) ||
+					   WPFClipboard.ContainsText(System.Windows.TextDataFormat.Rtf) ||
+					   WPFClipboard.ContainsText(System.Windows.TextDataFormat.UnicodeText) ||
+					   WPFClipboard.ContainsText(System.Windows.TextDataFormat.Text);
 			}
 		}
 
@@ -132,29 +132,29 @@ namespace Clipboard
 		{
 			string text = null;
 
-			if (SystemClipboard.ContainsText(System.Windows.TextDataFormat.Xaml))
+			if (WPFClipboard.ContainsText(System.Windows.TextDataFormat.Xaml))
 			{
-				text = SystemClipboard.GetText(System.Windows.TextDataFormat.Xaml);
+				text = WPFClipboard.GetText(System.Windows.TextDataFormat.Xaml);
 			}
-			else if (SystemClipboard.ContainsText(System.Windows.TextDataFormat.CommaSeparatedValue))
+			else if (WPFClipboard.ContainsText(System.Windows.TextDataFormat.CommaSeparatedValue))
 			{
-				text = SystemClipboard.GetText(System.Windows.TextDataFormat.CommaSeparatedValue);
+				text = WPFClipboard.GetText(System.Windows.TextDataFormat.CommaSeparatedValue);
 			}
-			else if (SystemClipboard.ContainsText(System.Windows.TextDataFormat.Html))
+			else if (WPFClipboard.ContainsText(System.Windows.TextDataFormat.Html))
 			{
-				text = SystemClipboard.GetText(System.Windows.TextDataFormat.Html);
+				text = WPFClipboard.GetText(System.Windows.TextDataFormat.Html);
 			}
-			else if (SystemClipboard.ContainsText(System.Windows.TextDataFormat.Rtf))
+			else if (WPFClipboard.ContainsText(System.Windows.TextDataFormat.Rtf))
 			{
-				text = SystemClipboard.GetText(System.Windows.TextDataFormat.Rtf);
+				text = WPFClipboard.GetText(System.Windows.TextDataFormat.Rtf);
 			}
-			else if (SystemClipboard.ContainsText(System.Windows.TextDataFormat.UnicodeText))
+			else if (WPFClipboard.ContainsText(System.Windows.TextDataFormat.UnicodeText))
 			{
-				text = SystemClipboard.GetText(System.Windows.TextDataFormat.UnicodeText);
+				text = WPFClipboard.GetText(System.Windows.TextDataFormat.UnicodeText);
 			}
-			else if (SystemClipboard.ContainsText(System.Windows.TextDataFormat.Text))
+			else if (WPFClipboard.ContainsText(System.Windows.TextDataFormat.Text))
 			{
-				text = SystemClipboard.GetText(System.Windows.TextDataFormat.Text);
+				text = WPFClipboard.GetText(System.Windows.TextDataFormat.Text);
 			}
 
 			return text is not null
@@ -174,7 +174,7 @@ namespace Clipboard
 		/// </returns>
 		public ClipboardData<Stream>? GetAudio()
 		{
-			return SystemClipboard.GetAudioStream() is Stream data
+			return WPFClipboard.GetAudioStream() is Stream data
 					? new ClipboardData<Stream>(data, DataType.Audio)
 					: null;
 		}
@@ -242,7 +242,7 @@ namespace Clipboard
 		/// </returns>
 		public ClipboardData<IReadOnlyCollection<string>>? GetFileDrop()
 		{
-			var rawFileDrop = SystemClipboard.GetFileDropList();
+			var rawFileDrop = WPFClipboard.GetFileDropList();
 			return rawFileDrop is not null
 								? new ClipboardData<IReadOnlyCollection<string>>(ConvertFromRaw(rawFileDrop), DataType.FileDrop)
 								: null;
@@ -270,7 +270,7 @@ namespace Clipboard
 		{
 			VerifyParameterIsNotNull(text, nameof(text));
 
-			SystemClipboard.SetText(text, System.Windows.TextDataFormat.UnicodeText);
+			WPFClipboard.SetText(text, System.Windows.TextDataFormat.UnicodeText);
 		}
 
 		/// <summary>
@@ -282,7 +282,7 @@ namespace Clipboard
 		{
 			VerifyParameterIsNotNull(audioStream, nameof(audioStream));
 
-			SystemClipboard.SetAudio(audioStream);
+			WPFClipboard.SetAudio(audioStream);
 		}
 
 		/// <summary>
@@ -292,7 +292,7 @@ namespace Clipboard
 		public void SetImage(BinaryData imageData)
 		{
 			VerifyParameterIsNotNull(imageData, nameof(imageData));
-			SystemClipboard.SetImage(ConvertBinaryDataToBitmapSource(imageData)); // TODO: заменить заменить на низкоуровневый вызов.
+			WPFClipboard.SetImage(ConvertBinaryDataToBitmapSource(imageData)); // TODO: заменить заменить на низкоуровневый вызов.
 
 			static BitmapSource ConvertBinaryDataToBitmapSource(BinaryData binaryData)
 			{
@@ -310,7 +310,7 @@ namespace Clipboard
 		{
 			VerifyParameterIsNotNull(pathes, nameof(pathes));
 
-			SystemClipboard.SetFileDropList(ConvertCollectionToSpecialized(pathes)); // TODO: заменить на низкоуровневый вызов.
+			WPFClipboard.SetFileDropList(ConvertCollectionToSpecialized(pathes)); // TODO: заменить на низкоуровневый вызов.
 
 			static StringCollection ConvertCollectionToSpecialized(IEnumerable<string> enumerable)
 			{
@@ -358,7 +358,7 @@ namespace Clipboard
 		}
 		bool IsFormatPresented(string formatName)
 		{
-			return SystemClipboard.ContainsData(formatName);
+			return WPFClipboard.ContainsData(formatName);
 		}
 
 		static void VerifyParameterIsNotNull<T>(T paramValue, string paramName)
