@@ -29,10 +29,10 @@ namespace Clipboard
 			clipboardWindow = new MessageOnlyWin32Window();
 			systemClipboard = new Win32Clipboard(clipboardWindow);
 			clipboardListener = new Win32ClipboardListener(clipboardWindow);
-			clipboardListener.NewClipboardDataObtained += OnNewClipboardDataObtained;
+			clipboardListener.ClipboardUpdated += OnClipboardUpdated;
 		}
 
-		private void OnNewClipboardDataObtained()
+		private void OnClipboardUpdated()
 		{
 			bool shouldRiseEvent = true;
 

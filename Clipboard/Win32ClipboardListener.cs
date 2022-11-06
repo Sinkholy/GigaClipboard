@@ -14,24 +14,24 @@ namespace Clipboard
 		{
 			// TODO: проверить параметр.
 			this.messagesReceiverWindow = messagesReceiverWindow;
-			this.messagesReceiverWindow.NewWindowMessageReceived += WindowsMessagesInterceptor;
+			this.messagesReceiverWindow.NewWindowMessageReceived += OnNewWindowMessageReceived;
 
 			// Подписание окна-слушателя на получение необходимых сообщений.
 			var subscribed = SubscribeToClipboardUpdates(out var errors); // TODO: вынести в отдельный метод Start()? Это позволит безболезнено возвращать результат создания слушателя управляющей стороне. 
 		}
 
-		internal event Action NewClipboardDataObtained = delegate { };
+		internal event Action ClipboardUpdated = delegate { };
 
 		/// <summary>
 		/// Используется как перехватчик системных сообщений получаемых окном <see cref="windowHandlerSource"/>
 		/// для обработки сообщений типа <see cref="ClipboardUpdatedMessageIdentifier"/> которые сигнализируют об обновлении
 		/// системного буфера обмена.
 		/// </summary>
-		void WindowsMessagesInterceptor(int msg)
+		void OnNewWindowMessageReceived(int msg)
 		{
 			if (msg is ClipboardUpdatedMessageIdentifier)
 			{
-				NewClipboardDataObtained();
+				ClipboardUpdated();
 			}
 		}
 		bool SubscribeToClipboardUpdates(out ICollection<NativeError>? errors)
@@ -185,7 +185,7 @@ namespace Clipboard
 		public void Dispose()
 		{
 			var unsubscribed = UnsubscribeFromClipboardUpdates(out var errors);
-			messagesReceiverWindow.NewWindowMessageReceived -= WindowsMessagesInterceptor;
+			messagesReceiverWindow.NewWindowMessageReceived -= OnNewWindowMessageReceived;
 		}
 	}
 }
