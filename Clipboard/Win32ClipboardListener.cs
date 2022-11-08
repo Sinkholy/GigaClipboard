@@ -1,5 +1,4 @@
-﻿using API;
-using Clipboard.Native;
+﻿using Clipboard.Native;
 
 namespace Clipboard
 {
@@ -17,7 +16,7 @@ namespace Clipboard
 			this.messagesReceiverWindow.NewWindowMessageReceived += OnNewWindowMessageReceived;
 
 			// Подписание окна-слушателя на получение необходимых сообщений.
-			var subscribed = SubscribeToClipboardUpdates(out var errors); // TODO: вынести в отдельный метод Start()? Это позволит безболезнено возвращать результат создания слушателя управляющей стороне. 
+			var subscribed = SubscribeToClipboardUpdates(); // TODO: вынести в отдельный метод Start()? Это позволит безболезнено возвращать результат создания слушателя управляющей стороне. 
 		}
 
 		internal event Action ClipboardUpdated = delegate { };
@@ -34,11 +33,10 @@ namespace Clipboard
 				ClipboardUpdated();
 			}
 		}
-		bool SubscribeToClipboardUpdates(out ICollection<NativeError>? errors)
+		bool SubscribeToClipboardUpdates()
 		{
 			const int RetryCount = 5;
 
-			var errorsLazy = new Lazy<List<NativeError>>();
 			byte currentTry = 0;
 			bool subscribed;
 			while (true)
@@ -64,9 +62,7 @@ namespace Clipboard
 					break;
 				}
 			}
-			errors = errorsLazy.IsValueCreated
-				? errorsLazy.Value
-				: null;
+
 			return subscribed;
 
 			void HandleError(int? errorCode, out bool errorHandled, out bool expectedError)
@@ -92,26 +88,11 @@ namespace Clipboard
 						break;
 				}
 			}
-			void RecordError(int code, bool handled, bool expected)
-			{
-				var error = NativeErrorsHelper.CreateNativeErrorFromCode(code);
-				if (!handled)
-				{
-					error.Attributes |= NativeError.ErrorAttributes.UnHandled;
-				}
-				if (!expected)
-				{
-					error.Attributes |= NativeError.ErrorAttributes.UnExpected;
-				}
-
-				errorsLazy.Value.Add(error);
-			}
 		}
-		bool UnsubscribeFromClipboardUpdates(out ICollection<NativeError>? errors)
+		bool UnsubscribeFromClipboardUpdates()
 		{
 			const int RetryCount = 5;
 
-			var errorsLazy = new Lazy<List<NativeError>>();
 			byte currentTry = 0;
 			bool unsubscribed;
 			while (true)
@@ -138,9 +119,6 @@ namespace Clipboard
 				}
 			}
 
-			errors = errorsLazy.IsValueCreated
-				? errorsLazy.Value
-				: null;
 			return unsubscribed;
 
 			void HandleError(int? errorCode, out bool errorHandled, out bool expectedError)
@@ -166,25 +144,25 @@ namespace Clipboard
 						break;
 				}
 			}
-			void RecordError(int code, bool handled, bool expected)
+		}
+		void RecordError(int code, bool handled, bool expected)
+		{
+			var error = NativeErrorsHelper.CreateNativeErrorFromCode(code);
+			if (!handled)
 			{
-				var error = NativeErrorsHelper.CreateNativeErrorFromCode(code);
-				if (!handled)
-				{
-					error.Attributes |= NativeError.ErrorAttributes.UnHandled;
-				}
-				if (!expected)
-				{
-					error.Attributes |= NativeError.ErrorAttributes.UnExpected;
-				}
-
-				errorsLazy.Value.Add(error);
+				error.Attributes |= NativeError.ErrorAttributes.UnHandled;
 			}
+			if (!expected)
+			{
+				error.Attributes |= NativeError.ErrorAttributes.UnExpected;
+			}
+
+			// TODO: логировать ошибку.
 		}
 
 		public void Dispose()
 		{
-			var unsubscribed = UnsubscribeFromClipboardUpdates(out var errors);
+			UnsubscribeFromClipboardUpdates();
 			messagesReceiverWindow.NewWindowMessageReceived -= OnNewWindowMessageReceived;
 		}
 	}
