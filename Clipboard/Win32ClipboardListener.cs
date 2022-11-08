@@ -36,31 +36,22 @@ namespace Clipboard
 		bool SubscribeToClipboardUpdates()
 		{
 			const int RetryCount = 5;
-
+				
 			byte currentTry = 0;
-			bool subscribed;
-			while (true)
+			bool subscribed = NativeMethodsWrapper.TryToSubscribeWindowToClipboardUpdates(messagesReceiverWindow.Handle, out int? errorCode);
+			while (!subscribed)
 			{
-				subscribed = NativeMethodsWrapper.TryToSubscribeWindowToClipboardUpdates(messagesReceiverWindow.Handle, out int? errorCode);
-				if (subscribed)
+				HandleError(errorCode, out bool errorHandled, out bool expectedError);
+				RecordError(errorCode.Value, errorHandled, expectedError);
+
+				bool callsLimitReached = ++currentTry == RetryCount;
+				if (errorHandled is false ||
+					callsLimitReached)
 				{
 					break;
-				}
-				else
-				{
-					HandleError(errorCode, out bool errorHandled, out bool expectedError);
-					RecordError(errorCode.Value, errorHandled, expectedError);
-					if (!errorHandled)
-					{
-						break;
-					}
-					currentTry++;
 				}
 
-				if (currentTry == RetryCount)
-				{
-					break;
-				}
+				subscribed = NativeMethodsWrapper.TryToSubscribeWindowToClipboardUpdates(messagesReceiverWindow.Handle, out errorCode);
 			}
 
 			return subscribed;
@@ -94,29 +85,21 @@ namespace Clipboard
 			const int RetryCount = 5;
 
 			byte currentTry = 0;
-			bool unsubscribed;
-			while (true)
+			bool unsubscribed = NativeMethodsWrapper.TryToUnsubscribeWindowFromClipboardUpdates(messagesReceiverWindow.Handle, out int? errorCode);
+			while (!unsubscribed)
 			{
-				unsubscribed = NativeMethodsWrapper.TryToUnsubscribeWindowFromClipboardUpdates(messagesReceiverWindow.Handle, out int? errorCode);
-				if (unsubscribed)
+
+				HandleError(errorCode, out bool errorHandled, out bool expectedError);
+				RecordError(errorCode.Value, errorHandled, expectedError);
+
+				bool callsLimitReached = ++currentTry == RetryCount;
+				if (errorHandled is false ||
+					callsLimitReached)
 				{
 					break;
-				}
-				else
-				{
-					HandleError(errorCode, out bool errorHandled, out bool expectedError);
-					RecordError(errorCode.Value, errorHandled, expectedError);
-					if (!errorHandled)
-					{
-						break;
-					}
-					currentTry++;
 				}
 
-				if (currentTry == RetryCount)
-				{
-					break;
-				}
+				unsubscribed = NativeMethodsWrapper.TryToUnsubscribeWindowFromClipboardUpdates(messagesReceiverWindow.Handle, out errorCode);
 			}
 
 			return unsubscribed;
