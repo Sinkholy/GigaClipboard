@@ -63,13 +63,12 @@ namespace Clipboard.Native
 		/// <returns>
 		///		<see langword="true"/> если эксклюзивный доступ получен, иначе <see langword="false"/>.
 		/// </returns>
-		internal static bool TryToGetExclusiveClipboardControl(IntPtr windowHandler, out ClipboardExclusiveAccessToken accessToken, out int? errorCode)
+		internal static bool TryToGetExclusiveClipboardControl(IntPtr windowHandler, out int? errorCode)
 		{
 			bool controlGranted = NativeMethods.OpenClipboard(windowHandler);
 			errorCode = controlGranted
 					? null
 					: GetLastNativeError();
-			accessToken = new ClipboardExclusiveAccessToken();
 
 			return controlGranted;
 		}
@@ -220,28 +219,21 @@ namespace Clipboard.Native
 		/// <summary>
 		/// Очищает системный буфер обмена от содержимого и освобождает ресурсы. 
 		/// </summary>
+		/// <remarks>
+		/// Перед вызовом этой функции необходимо получить эксклюзивный доступ к системному буферу обмену с помощью <see cref="NativeMethodsWrapper.GetExclusiveClipboardControl(IntPtr, uint)"/>,
+		/// иначе результатом выполнения функции будет ошибка;
+		/// </remarks>
 		/// <param name="retryCount">Количество попыток очищения буфера в случае неудачи.</param>
 		/// <returns>
 		/// <see langword="true"/> если очищение произведено, иначе <see langword="false"/>.
 		/// </returns>
-		internal static bool TryToClearClipboard(IntPtr windowHandler, out int? errorCode)
+		internal static bool TryToClearClipboard(out int? errorCode)
 		{
-			bool isCleared;
-			if (TryToGetExclusiveClipboardControl(windowHandler, out var accessToken, out errorCode))
+			errorCode = null;
+			bool isCleared = NativeMethods.EmptyClipboard();
+			if (!isCleared)
 			{
-				using (accessToken)
-				{
-					isCleared = NativeMethods.EmptyClipboard();
-					if (!isCleared)
-					{
-						IsErrorOccured(out errorCode);
-					}
-				}
-			}
-			else
-			{
-				isCleared = false;
-				IsErrorOccured(out errorCode);
+				isCleared = !IsErrorOccured(out errorCode);
 			}
 
 			return isCleared;
@@ -279,24 +271,14 @@ namespace Clipboard.Native
 			}
 			return windowFound;
 		}
-		internal static bool TryToGetClipboardData(IntPtr windowHandler, UInt16 formatId, out IntPtr? dataPtr, out int? errorCode)
+		internal static bool TryToGetClipboardData(UInt16 formatId, out IntPtr? dataPtr, out int? errorCode)
 		{
+			errorCode = null;
 			bool dataRetrieved = true;
-			if (TryToGetExclusiveClipboardControl(windowHandler, out var accessToken, out errorCode))
+			dataPtr = NativeMethods.GetClipboardData(formatId);
+			if (dataPtr == IntPtr.Zero)
 			{
-				using (accessToken)
-				{
-					dataPtr = NativeMethods.GetClipboardData(formatId);
-					if (dataPtr == IntPtr.Zero)
-					{
-						dataRetrieved = !IsErrorOccured(out errorCode);
-					}
-				}
-			}
-			else
-			{
-				dataPtr = null;
-				dataRetrieved = false;
+				dataRetrieved = !IsErrorOccured(out errorCode);
 			}
 
 			return dataRetrieved;
@@ -321,19 +303,16 @@ namespace Clipboard.Native
 
 			return successed;
 		}
-		internal static bool TryToGlobalLock(IntPtr memPtr, out LockedMemory lockedMemory, out int? errorCode)
+		internal static bool TryToGlobalLock(IntPtr memPtr, out IntPtr? lockedMemPtr, out int? errorCode)
 		{
 			errorCode = null;
 
 			bool locked = true;
-			var lockedMemPtr = NativeMethods.GlobalLock(memPtr);
+			lockedMemPtr = NativeMethods.GlobalLock(memPtr);
 			if (lockedMemPtr == IntPtr.Zero)
 			{
 				locked = !IsErrorOccured(out errorCode);
 			}
-			lockedMemory = locked
-						? new LockedMemory(lockedMemPtr)
-						: new LockedMemory();
 
 			return locked;
 		}
@@ -367,56 +346,5 @@ namespace Clipboard.Native
 			return Marshal.GetLastWin32Error();
 		}
 		#endregion
-
-		internal readonly ref struct ClipboardExclusiveAccessToken
-		{
-			public void Dispose()
-			{
-				int currentTry = 0;
-				while (true)
-				{
-					bool unlocked = TryToReturnExclusiveClipboardControl(out _);
-					if (unlocked)
-					{
-						break;
-					}
-					else if (++currentTry == 10)
-					{
-						break;
-					}
-				}
-			}
-		}
-		internal readonly ref struct LockedMemory
-		{
-			readonly bool valid = false;
-			readonly internal IntPtr Pointer;
-
-			internal LockedMemory(IntPtr pointer)
-			{
-				valid = true;
-				Pointer = pointer;
-			}
-
-			public void Dispose()
-			{
-				if (valid)
-				{
-					int currentTry = 0;
-					while (true)
-					{
-						bool unlocked = TryToGlobalUnlock(Pointer, out _);
-						if (unlocked)
-						{
-							break;
-						}
-						else if (++currentTry == 10)
-						{
-							break;
-						}
-					}
-				}
-			}
-		}
 	}
 }

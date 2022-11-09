@@ -18,6 +18,7 @@ namespace Clipboard
 		readonly Win32Window clipboardWindow;
 		readonly Win32Clipboard systemClipboard;
 		readonly Win32ClipboardListener clipboardListener;
+		readonly MemoryLocker memoryLocker;
 		bool isDisposed;
 		ClipboardData lastObtainedData;
 
@@ -30,6 +31,7 @@ namespace Clipboard
 			systemClipboard = new Win32Clipboard(clipboardWindow);
 			clipboardListener = new Win32ClipboardListener(clipboardWindow);
 			clipboardListener.ClipboardUpdated += OnClipboardUpdated;
+			memoryLocker = new MemoryLocker();
 		}
 
 		private void OnClipboardUpdated()
@@ -192,7 +194,7 @@ namespace Clipboard
 			var imageFormatId = CF_DIBV5;
 			byte[] imageBinaryData;
 			if (systemClipboard.TryGetClipboardData(imageFormatId, out var dataPtr)
-			 && NativeMethodsWrapper.TryToGlobalLock(dataPtr.Value, out var lockedMemory, out var errorCode))
+			 && memoryLocker.TryToLockMemory(dataPtr.Value, out var lockedMemory))
 			{
 				using (lockedMemory)
 				{
@@ -323,7 +325,7 @@ namespace Clipboard
 
 		public void ClearClipboard()
 		{
-			systemClipboard.ClearClipboard();
+			systemClipboard.TryClearClipboard();
 		}
 
 		static void VerifyParameterIsNotNull<T>(T paramValue, string paramName)
