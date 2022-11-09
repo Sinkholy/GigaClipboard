@@ -24,14 +24,82 @@ namespace Clipboard
 		/// </summary>
 		/// <returns>Коллекцию имён форматов в которых представленны данные в системном буфере обмена.</returns>
 		/// <exception cref="ExclusiveControlException">Если не удалось получить или вернуть эксклюзивный доступ к системному буферу обмена.</exception>
-		internal IReadOnlyCollection<string> GetPresentedFormats()
+		internal bool TryToEnumerateDataFormats(out IReadOnlyCollection<uint>? enumeratedFormats)
 		{
-			if (!NativeMethodsWrapper.TryToGetPresentedFormats(clipboardWindow.Handle, out var formats, out int? errorCode))
+			var accessGranted = GetExclusiveAccess(out var accessToken, out _);
+			if (!accessGranted)
 			{
-				formats = Array.Empty<string>();
+				enumeratedFormats = null;
+				return false;
 			}
 
-			return formats;
+			bool formatsEnumerated = true;
+			using (accessToken)
+			{
+				const int DefaultFormatId = 0; // https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumclipboardformats#parameters
+
+				
+				var foundFormats = new List<uint>(GetClipboardFormatsCount());
+				uint currentFormatId = DefaultFormatId;
+				while (true)
+				{
+					bool nextFormatRetreived = NativeMethodsWrapper.TryToEnumClipboardFormats(currentFormatId, out var nextFormatId, out var errorCode);
+
+					bool allFormatsEnumerated = !nextFormatRetreived || errorCode is null;
+					if (allFormatsEnumerated)
+					{
+						break;
+					}
+					else if (errorCode is not null)
+					{
+						HandleError(errorCode.Value, out var errorHandled, out var errorExpected);
+						RecordError(errorCode.Value, errorHandled, errorExpected);
+
+						if (!errorHandled)
+						{
+							formatsEnumerated = false;
+							// TAI: нужно ли здесь возвращать негативный результут?
+							// Может будет достаточно 90% перечисленных форматов?
+							// Сделать выбор в пользу отказоустойчивости, а не правдивости?
+							break;
+						}
+					}
+
+					foundFormats.Add(nextFormatId.Value);
+					currentFormatId = nextFormatId.Value;
+				}
+
+				enumeratedFormats = foundFormats;
+			}
+
+			return formatsEnumerated;
+
+			void HandleError(int? errorCode, out bool errorHandled, out bool expectedError)
+			{
+				errorHandled = true;
+				expectedError = true;
+				switch (errorCode) // TODO: собрать данные о потенциальных ошибках.
+				{
+					default:
+						errorHandled = false;
+						expectedError = false;
+						break;
+				}
+			}
+			void RecordError(int code, bool handled, bool expected)
+			{
+				var error = NativeErrorsHelper.CreateNativeErrorFromCode(code);
+				if (!handled)
+				{
+					error.Attributes |= NativeError.ErrorAttributes.UnHandled;
+				}
+				if (!expected)
+				{
+					error.Attributes |= NativeError.ErrorAttributes.UnExpected;
+				}
+
+				// TODO: логируем ошибку.
+			}
 		}
 		internal int GetClipboardFormatsCount()
 		{

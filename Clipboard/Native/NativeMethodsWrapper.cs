@@ -132,79 +132,35 @@ namespace Clipboard.Native
 
 			return result;
 		}
-		/// <summary>
-		/// Получает коллекцию имён форматов в которых представлены данные в буфере обмена.
-		/// </summary>
-		/// <returns>Имена форматов данных или пустая коллекция при ошибке.</returns>
-		internal static bool TryToGetPresentedFormats(IntPtr windowHandler, out IReadOnlyCollection<string>? formats, out int? errorCode)
+		internal static bool TryToEnumClipboardFormats(uint currentFormatId, out uint? nextFormatId, out int? errorCode) // TODO: имя параметров стоит изменить для ясности\явности
 		{
-			const int DefaultFormatId = 0; // https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumclipboardformats#parameters
-			const int LastFormatId = 0; // https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumclipboardformats#return-value
 			const int ErrorId = 0; // https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumclipboardformats#return-value
+			const int LastFormatId = 0; // https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumclipboardformats#return-value
 
-			List<string>? formatsFound = null;
-			bool result;
-			if (TryToGetExclusiveClipboardControl(windowHandler, out var accessToken, out errorCode))
+			errorCode = null;
+			bool formatEnumerated = true;
+			nextFormatId = NativeMethods.EnumClipboardFormats(currentFormatId);
+			// Следуя документации Microsoft метод EnumClipboardFormats
+			// возвращает 0 в случаях:
+			// a) Больше нет форматов для перечисления.
+			// b) Произошла ошибка при обработке запроса.
+			// Так как оба случая идентифицируются одним и тем же значением
+			// приходится явно выяснять у системы произошла ли ошибка в случае получения этого значения.
+			if (nextFormatId is LastFormatId or ErrorId)
 			{
-				using (accessToken)
+				if (IsErrorOccured(out errorCode))
 				{
-					formatsFound = new(10);
-					uint currentFormatId = DefaultFormatId;
-					while (true)
-					{
-						currentFormatId = GetNextFormatId(currentFormatId);
-						// Следуя документации Microsoft метод EnumClipboardFormats
-						// возвращает 0 в случаях:
-						// a) Больше нет форматов для перечисления.
-						// b) Произошла ошибка при обработке запроса.
-						// Так как оба случая идентифицируются одним и тем же значением
-						// приходится явно выяснять у системы произошла ли ошибка в случае получения этого значения.
-						if (currentFormatId is LastFormatId or ErrorId)
-						{
-							if (IsErrorOccured(out errorCode))
-							{
-								// Произошла ошибка.
-								result = false;
-							}
-							else
-							{
-								// Больше нет форматов для перечисления.
-								result = true;
-							}
-							break;
-						}
-						else
-						{
-							if (TryGetFormatName(currentFormatId, out string? formatName, out int? formatNameSearchErrorCode))
-							{
-								formatsFound.Add(formatName);
-							}
-							else
-							{
-								// Мы попадаем сюда с ошибкой - нужно ли её логировать?
-								// TODO: нужно решить как поступать в случае если имя формато не было найдено.
-								// В данный момент в результат просто добавляется числовой идентификатор формата,
-								// но это никак не отражено ни в сигнатуре метода ни в его заголовочном комментарии.
-								formatsFound.Add(currentFormatId.ToString());
-							}
-						}
-					}
+					// Произошла ошибка.
+					formatEnumerated = false;
+				}
+				else
+				{
+					// Больше нет форматов для перечисления.
+					formatEnumerated = true;
 				}
 			}
-			else
-			{
-				result = false;
-			}
 
-			formats = result
-					? formatsFound
-					: null;
-			return result;
-
-			static uint GetNextFormatId(uint currentFormatId)
-			{
-				return NativeMethods.EnumClipboardFormats(currentFormatId);
-			}
+			return formatEnumerated;
 		}
 		internal static bool IsClipboardFormatAvailable(uint formatId, out int? errorCode)
 		{
@@ -226,7 +182,7 @@ namespace Clipboard.Native
 		/// <returns>
 		/// <see langword="true"/> если имя формата было найдено, иначе <see langword="false"/>.
 		/// </returns>
-		internal static bool TryGetFormatName(uint formatId, out string? formatName, out int? errorCode)
+		internal static bool TryToGetClipboardFormatName(uint formatId, out string? formatName, out int? errorCode)
 		{
 			const int FormatNameErrorId = 0;
 			const char EmptyChar = '\0';
@@ -234,40 +190,28 @@ namespace Clipboard.Native
 
 			errorCode = null;
 			bool result;
+			// При проблемах с производительностью стоит рассмотреть вариант замены инициализации массива символов
+			// на получение этого же массива из пула объектов ArrayPool<T>. (Доступно только в >net core 1.0)
+			var buffer = new char[MaxFormatNameLength];
 
-			// Документация метода GetClipboardFormatName гласит, что параметром представляющим
-			// идентификатор формата ([in] format) не должны передаваться идентификаторы предопреленных
-			// форматов. https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getclipboardformatnamea#parameters
-			// Здесь проверяется является ли формат предпоределенным системой.
-			if (PredefinedFormats.TryGetFormatById(formatId, out formatName))
+			var foundSymbolsCount = NativeMethods.GetClipboardFormatName(formatId, buffer, buffer.Length);
+			if (foundSymbolsCount is not FormatNameErrorId)
 			{
 				result = true;
+				formatName = new string(buffer).Trim(EmptyChar);
 			}
 			else
 			{
-				// При проблемах с производительностью стоит рассмотреть вариант замены инициализации массива символов
-				// на получение этого же массива из пула объектов ArrayPool<T>. (Доступно только в >net core 1.0)
-				var buffer = new char[MaxFormatNameLength];
-
-				var foundSymbolsCount = NativeMethods.GetClipboardFormatName(formatId, buffer, buffer.Length);
-				if (foundSymbolsCount is not FormatNameErrorId)
+				if (IsErrorOccured(out errorCode))
 				{
-					result = true;
-					formatName = new string(buffer).Trim(EmptyChar);
+					result = false;
+					formatName = null;
 				}
 				else
 				{
-					if (IsErrorOccured(out errorCode))
-					{
-						result = false;
-						formatName = null;
-					}
-					else
-					{
 
-						result = true;
-						formatName = string.Empty;
-					}
+					result = true;
+					formatName = string.Empty;
 				}
 			}
 
@@ -387,8 +331,8 @@ namespace Clipboard.Native
 			{
 				locked = !IsErrorOccured(out errorCode);
 			}
-			lockedMemory = locked 
-						? new LockedMemory(lockedMemPtr) 
+			lockedMemory = locked
+						? new LockedMemory(lockedMemPtr)
 						: new LockedMemory();
 
 			return locked;
@@ -472,65 +416,6 @@ namespace Clipboard.Native
 						}
 					}
 				}
-			}
-		}
-		/// <summary>
-		/// Класс инкапсулирует предопределенные форматы данных и методы доступа к ним.
-		/// </summary>
-		/// <remarks>
-		/// <see href="https://docs.microsoft.com/en-us/windows/win32/dataxchg/standard-clipboard-formats">Документация касающаяся предопределенных форматов.</see>
-		/// </remarks>
-		static class PredefinedFormats
-		{
-			static readonly IDictionary<uint, string> SystemPredefinedClipboardFormats;
-
-			static PredefinedFormats()
-			{
-				SystemPredefinedClipboardFormats = new Dictionary<uint, string>()
-					{
-						{ 1, "CF_TEXT" },
-						{ 2, "CF_BITMAP" },
-						{ 8, "CF_DIB" },
-						{ 17, "CF_DIBV5" },
-						{ 0x0082, "CF_DSPBITMAP" },
-						{ 0x008E, "CF_DSPENHMETAFILE" },
-						{ 0x0083, "CF_DSPMETAFILEPICT" },
-						{ 0x0081, "CF_DSPTEXT" },
-						{ 14, "CF_ENHMETAFILE" },
-						{ 0x0300, "CF_GDIOBJFIRST" },
-						{ 0x03FF, "CF_GDIOBJLAST" },
-						{ 15, "CF_HDROP" },
-						{ 16, "CF_LOCALE" },
-						{ 3, "CF_METAFILEPICT" },
-						{ 7, "CF_OEMTEXT" },
-						{ 0x0080, "CF_OWNERDISPLAY" },
-						{ 9, "CF_PALETTE" },
-						{ 10, "CF_PENDATA" },
-						{ 0x0200, "CF_PRIVATEFIRST" },
-						{ 0x02FF, "CF_PRIVATELAST" },
-						{ 11, "CF_RIFF" },
-						{ 4, "CF_SYLK" },
-						{ 6, "CF_TIFF" },
-						{ 13, "CF_UNICODETEXT" },
-						{ 12, "CF_WAVE" }
-					};
-			}
-
-			/// <summary>
-			/// Метод определяет является ли формат с предоставленным идентификатором <paramref name="formatId"/> предопределенным.
-			/// </summary>
-			/// <param name="formatId">Идентификатор формата.</param>
-			/// <returns>
-			/// <see langword="true"/> если формат предопределен, иначе <see langword="false"/>.
-			/// </returns>
-			internal static bool Contains(uint formatId)
-			{
-				return SystemPredefinedClipboardFormats.ContainsKey(formatId);
-			}
-
-			internal static bool TryGetFormatById(uint formatId, out string? formatName)
-			{
-				return SystemPredefinedClipboardFormats.TryGetValue(formatId, out formatName);
 			}
 		}
 	}
