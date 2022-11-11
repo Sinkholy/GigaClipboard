@@ -16,7 +16,7 @@ namespace Clipboard
 
 		internal bool TryGetClipboardData(ushort formatId, out IntPtr? dataPtr)
 		{
-			bool accessGranted = GetExclusiveAccess(out var access, out _);
+			bool accessGranted = GetExclusiveAccess(out var access);
 			if (accessGranted)
 			{
 				return GetClipboardData(access, formatId, out dataPtr);
@@ -75,7 +75,7 @@ namespace Clipboard
 		/// <exception cref="ExclusiveControlException">Если не удалось получить или вернуть эксклюзивный доступ к системному буферу обмена.</exception>
 		internal bool TryToEnumerateDataFormats(out IReadOnlyCollection<uint>? enumeratedFormats)
 		{
-			var accessGranted = GetExclusiveAccess(out var accessToken, out _);
+			var accessGranted = GetExclusiveAccess(out var accessToken);
 			if (!accessGranted)
 			{
 				enumeratedFormats = null;
@@ -145,11 +145,10 @@ namespace Clipboard
 			}
 			return formatsCount;
 		}
-		bool GetExclusiveAccess(out ClipboardExclusiveAccessToken? accessToken, out ICollection<NativeError>? errors)
+		bool GetExclusiveAccess(out ClipboardExclusiveAccessToken? accessToken)
 		{
 			const int RetryCount = 5;
 
-			var errorsLazy = new Lazy<List<NativeError>>();
 			int currentTry = 0;
 			bool controlGranted;
 			while (true)
@@ -175,11 +174,6 @@ namespace Clipboard
 					break;
 				}
 			}
-
-			errors = errorsLazy.IsValueCreated
-				? errorsLazy.Value
-				: null;
-
 			accessToken = controlGranted
 						? new ClipboardExclusiveAccessToken(this)
 						: null;
@@ -203,11 +197,10 @@ namespace Clipboard
 				}
 			}
 		}
-		bool ReturnExclusiveAccess(out ICollection<NativeError>? errors)
+		bool ReturnExclusiveAccess()
 		{
 			const int RetryCount = 5;
 
-			var errorsLazy = new Lazy<List<NativeError>>();
 			int currentTry = 0;
 			bool controlReturned;
 			while (true)
@@ -241,9 +234,6 @@ namespace Clipboard
 				}
 			}
 
-			errors = errorsLazy.IsValueCreated
-				? errorsLazy.Value
-				: null;
 			return controlReturned;
 
 			void HandleError(int? errorCode, out bool errorHandled, out bool expectedError)
@@ -267,7 +257,7 @@ namespace Clipboard
 		}
 		internal bool TryClearClipboard()
 		{
-			bool accessGranted = GetExclusiveAccess(out var access, out _);
+			bool accessGranted = GetExclusiveAccess(out var access);
 			if (accessGranted)
 			{
 				return ClearClipboard(access);
@@ -335,7 +325,7 @@ namespace Clipboard
 		public void Dispose()
 		{
 			// TODO: проверить есть ли подписка.
-			ReturnExclusiveAccess(out var errors);
+			ReturnExclusiveAccess();
 		}
 
 		class ClipboardExclusiveAccessToken : IDisposable
@@ -349,7 +339,7 @@ namespace Clipboard
 
 			public void Dispose()
 			{
-				clipboard.ReturnExclusiveAccess(out _);
+				clipboard.ReturnExclusiveAccess();
 			}
 		}
 	}
