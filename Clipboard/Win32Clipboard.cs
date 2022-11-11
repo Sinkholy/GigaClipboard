@@ -145,7 +145,7 @@ namespace Clipboard
 			}
 			return formatsCount;
 		}
-		internal bool GetExclusiveAccess(out ClipboardExclusiveAccessToken? accessToken, out ICollection<NativeError>? errors)
+		bool GetExclusiveAccess(out ClipboardExclusiveAccessToken? accessToken, out ICollection<NativeError>? errors)
 		{
 			const int RetryCount = 5;
 
@@ -203,7 +203,7 @@ namespace Clipboard
 				}
 			}
 		}
-		internal bool ReturnExclusiveAccess(out ICollection<NativeError>? errors)
+		bool ReturnExclusiveAccess(out ICollection<NativeError>? errors)
 		{
 			const int RetryCount = 5;
 
@@ -338,7 +338,7 @@ namespace Clipboard
 			ReturnExclusiveAccess(out var errors);
 		}
 
-		internal class ClipboardExclusiveAccessToken : IDisposable
+		class ClipboardExclusiveAccessToken : IDisposable
 		{
 			readonly Win32Clipboard clipboard;
 
