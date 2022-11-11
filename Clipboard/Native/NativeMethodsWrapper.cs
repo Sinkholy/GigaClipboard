@@ -95,7 +95,7 @@ namespace Clipboard.Native
 		/// Возвращает количество форматов в которых представлены данные находящиеся в буфере обмена.
 		/// </summary>
 		/// <returns>Количество форматов данных.</returns>
-		internal static bool TryToCountPresentedFormats(out int formatsCount, out int? errorCode)
+		internal static bool TryToCountPresentedFormats(out int? formatsCount, out int? errorCode)
 		{
 			//https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-countclipboardformats#return-value
 			const int ZeroFormats = 0;
