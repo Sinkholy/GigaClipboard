@@ -64,20 +64,6 @@ namespace Clipboard
 								break;
 						}
 					}
-					void RecordError(int code, bool handled, bool expected)
-					{
-						var error = NativeErrorsHelper.CreateNativeErrorFromCode(code);
-						if (!handled)
-						{
-							error.Attributes |= NativeError.ErrorAttributes.UnHandled;
-						}
-						if (!expected)
-						{
-							error.Attributes |= NativeError.ErrorAttributes.UnExpected;
-						}
-
-						// TODO: логируем ошибку.
-					}
 				}
 			}
 		}
@@ -149,20 +135,6 @@ namespace Clipboard
 						break;
 				}
 			}
-			void RecordError(int code, bool handled, bool expected)
-			{
-				var error = NativeErrorsHelper.CreateNativeErrorFromCode(code);
-				if (!handled)
-				{
-					error.Attributes |= NativeError.ErrorAttributes.UnHandled;
-				}
-				if (!expected)
-				{
-					error.Attributes |= NativeError.ErrorAttributes.UnExpected;
-				}
-
-				// TODO: логируем ошибку.
-			}
 		}
 		internal int GetClipboardFormatsCount()
 		{
@@ -230,20 +202,6 @@ namespace Clipboard
 						break;
 				}
 			}
-			void RecordError(int code, bool handled, bool expected)
-			{
-				var error = NativeErrorsHelper.CreateNativeErrorFromCode(code);
-				if (!handled)
-				{
-					error.Attributes |= NativeError.ErrorAttributes.UnHandled;
-				}
-				if (!expected)
-				{
-					error.Attributes |= NativeError.ErrorAttributes.UnExpected;
-				}
-
-				errorsLazy.Value.Add(error);
-			}
 		}
 		internal bool ReturnExclusiveAccess(out ICollection<NativeError>? errors)
 		{
@@ -306,20 +264,6 @@ namespace Clipboard
 						break;
 				}
 			}
-			void RecordError(int code, bool handled, bool expected)
-			{
-				var error = NativeErrorsHelper.CreateNativeErrorFromCode(code);
-				if (!handled)
-				{
-					error.Attributes |= NativeError.ErrorAttributes.UnHandled;
-				}
-				if (!expected)
-				{
-					error.Attributes |= NativeError.ErrorAttributes.UnExpected;
-				}
-
-				errorsLazy.Value.Add(error);
-			}
 		}
 		internal bool TryClearClipboard()
 		{
@@ -371,21 +315,21 @@ namespace Clipboard
 							break;
 					}
 				}
-				void RecordError(int code, bool handled, bool expected)
-				{
-					var error = NativeErrorsHelper.CreateNativeErrorFromCode(code);
-					if (!handled)
-					{
-						error.Attributes |= NativeError.ErrorAttributes.UnHandled;
-					}
-					if (!expected)
-					{
-						error.Attributes |= NativeError.ErrorAttributes.UnExpected;
-					}
-
-					// TODO: логирование ошибки.
-				}
 			}
+		}
+		void RecordError(int code, bool handled, bool expected)
+		{
+			var error = NativeErrorsHelper.CreateNativeErrorFromCode(code);
+			if (!handled)
+			{
+				error.Attributes |= NativeError.ErrorAttributes.UnHandled;
+			}
+			if (!expected)
+			{
+				error.Attributes |= NativeError.ErrorAttributes.UnExpected;
+			}
+
+			// TODO: логируем ошибку.
 		}
 
 		public void Dispose()
