@@ -147,20 +147,13 @@ namespace Clipboard.Native
 			// приходится явно выяснять у системы произошла ли ошибка в случае получения этого значения.
 			if (nextFormatId is LastFormatId or ErrorId)
 			{
-				if (IsErrorOccured(out errorCode))
-				{
-					// Произошла ошибка.
-					formatEnumerated = false;
-				}
-				else
-				{
-					// Больше нет форматов для перечисления.
-					formatEnumerated = true;
-				}
+				IsErrorOccured(out errorCode);
+				nextFormatId = null;
+				formatEnumerated = false;
 			}
-
 			return formatEnumerated;
 		}
+
 		internal static bool IsClipboardFormatAvailable(uint formatId, out int? errorCode)
 		{
 			errorCode = null;
