@@ -4,6 +4,59 @@ namespace Clipboard
 {
 	internal class ClipboardFormats
 	{
+		internal static bool TryGetAvailableClipboardFormats(out uint[]? formats)
+		{
+			formats = new uint[GetFormatsCount()];
+			// TODO: Здесь возможно потребуется закрепить (pin) массив для оптимизации.
+			// https://learn.microsoft.com/en-us/dotnet/framework/interop/copying-and-pinning?source=recommendations
+			var received = NativeMethodsWrapper.TryGetUpdatedClipboardFormats(formats, formats.Length, out _, out var errorCode);
+			int currentTry = 0;
+			while (!received)
+			{
+				const int RetryCount = 5;
+
+				HandleError(errorCode, out bool errorHandled, out bool expectedError);
+				// TODO: логируем ошибку
+
+				bool callsLimitReached = ++currentTry < RetryCount;
+				if (errorHandled is false ||
+					callsLimitReached)
+				{
+					break;
+				}
+
+				received = NativeMethodsWrapper.TryGetUpdatedClipboardFormats(formats, formats.Length, out _, out errorCode);
+			}
+
+			if(!received)
+			{
+				formats = null;
+			}
+			return received;
+
+			int GetFormatsCount()
+			{
+				const int DefaultFormatsCount = 30;
+
+				var formatsCounted = NativeMethodsWrapper.TryToCountPresentedFormats(out int? formatsCount, out var errorCode);
+
+				return formatsCounted
+					? formatsCount.Value
+					: DefaultFormatsCount;
+			}
+			void HandleError(int? errorCode, out bool errorHandled, out bool expectedError)
+			{
+				errorHandled = true;
+				expectedError = true;
+				switch (errorCode) // TODO: собрать данные о потенциальных ошибках.
+				{
+					default:
+						errorHandled = false;
+						expectedError = false;
+						break;
+				}
+			}
+		}
 		internal static bool TryGetFormatName(uint formatId, out string? formatName)
 		{
 
