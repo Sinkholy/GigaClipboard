@@ -51,6 +51,10 @@ namespace Clipboard.Native
 
 		[DllImport("user32.dll", SetLastError = true)]
 		internal static extern int CountClipboardFormats();
+		[DllImport("user32.dll", SetLastError = true)]
+		internal static extern bool GetUpdatedClipboardFormats([In, Out] uint[] buffer, 
+																int bufferSize, 
+																out int formatsCount);
 
 		[DllImport("user32.dll", SetLastError = true)]
 		internal static extern uint EnumClipboardFormats(uint first);

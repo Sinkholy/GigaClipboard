@@ -64,55 +64,56 @@ namespace Clipboard
 		/// </summary>
 		/// <returns>Коллекцию имён форматов в которых представленны данные в системном буфере обмена.</returns>
 		/// <exception cref="ExclusiveControlException">Если не удалось получить или вернуть эксклюзивный доступ к системному буферу обмена.</exception>
-		internal bool TryEnumerateDataFormats(out IReadOnlyCollection<uint>? enumeratedFormats)
+		internal IEnumerable<uint> EnumerateDataFormats()
 		{
+			const int DefaultFormatId = 0; // https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumclipboardformats#parameters
+
 			var accessGranted = GetExclusiveAccess(out var accessToken);
 			if (!accessGranted)
 			{
-				enumeratedFormats = null;
-				return false;
+				yield break;
+				// Ну и що тут делать?
 			}
 
-			bool formatsEnumerated = true;
 			using (accessToken)
 			{
-				const int DefaultFormatsCount = 10;
-				const int DefaultFormatId = 0; // https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumclipboardformats#parameters
-
-				this.TryGetClipboardFormatsCount(out var formatsCount);
-				var foundFormats = new List<uint>(formatsCount ?? DefaultFormatsCount);
 				uint currentFormatId = DefaultFormatId;
+
 				while (true)
 				{
 					bool nextFormatRetreived = NativeMethodsWrapper.TryToEnumClipboardFormats(currentFormatId, out var nextFormatId, out var errorCode);
 
-					bool allFormatsEnumerated = !nextFormatRetreived || errorCode is null;
+					// Если запрос вернул отрицательный результат, но при этом код ошибки не был
+					// призначен то все форматы были перечислены и переданный currentFormatId 
+					// является последним в последовательности.
+					bool allFormatsEnumerated = !nextFormatRetreived && errorCode is null;
 					if (allFormatsEnumerated)
 					{
 						break;
 					}
-					else if (errorCode is not null)
+
+					bool errorOccured = !nextFormatRetreived && errorCode is not null;
+					if (errorOccured)
 					{
 						HandleError(errorCode.Value, out var errorHandled, out var errorExpected);
 						RecordError(errorCode.Value, errorHandled, errorExpected);
 
 						if (!errorHandled)
 						{
-							formatsEnumerated = false;
-							// TAI: нужно ли здесь возвращать негативный результут?
-							// Может будет достаточно 90% перечисленных форматов?
-							// Сделать выбор в пользу отказоустойчивости, а не правдивости?
 							break;
 						}
 					}
+					else
+					{
+						// Формат удачно получен, запрашиваем следующий формат.
+						currentFormatId = nextFormatId.Value;
+					}
 
-					foundFormats.Add(nextFormatId.Value);
-					currentFormatId = nextFormatId.Value;
+					yield return currentFormatId;
 				}
 
-				enumeratedFormats = foundFormats;
+				yield break;
 			}
-			return formatsEnumerated;
 
 			void HandleError(int? errorCode, out bool errorHandled, out bool expectedError)
 			{
