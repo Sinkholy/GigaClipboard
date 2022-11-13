@@ -121,10 +121,9 @@ namespace Clipboard.Native
 			const int ZeroFormats = 0;
 			const int ErrorId = 0;
 
-			bool result;
 			formatsCount = NativeMethods.CountClipboardFormats();
-			if (formatsCount is ZeroFormats or ErrorId) // TODO: стоит ли инвертировать этот If-Else?
-														// Эта мысль возникла в контексте "Первый вариант - верный и ожидаемый".
+			bool formatsCounted = true;
+			if (formatsCount is ZeroFormats or ErrorId)
 			{
 				// Следуя документации Microsoft метод CountClipboardFormats
 				// возвращает 0 в двух случаях:
@@ -134,28 +133,21 @@ namespace Clipboard.Native
 				// приходится явно выяснять у системы произошла ли ошибка в случае получения этого значения.
 				if (IsErrorOccured(out errorCode))
 				{
-					// Произошла ошибка.
 					formatsCount = null;
-					result = false;
-				}
-				else
-				{
-					// Форматов действительно 0.
-					result = true;
-				}
+					formatsCounted = false;
+				}				
 			}
 			else
 			{
-				result = true;
 				errorCode = null;
 			}
 
-			return result;
+			return formatsCounted;
 		}
 		internal static bool TryGetUpdatedClipboardFormats(uint[] buffer, int bufferSize, out int formatsCount, out int? errorCode)
 		{
-			var callSuccessed = NativeMethods.GetUpdatedClipboardFormats(buffer, bufferSize, out formatsCount);
-			if (callSuccessed)
+			var formatsRetreived = NativeMethods.GetUpdatedClipboardFormats(buffer, bufferSize, out formatsCount);
+			if (formatsRetreived)
 			{
 				errorCode = null;
 			}
@@ -164,7 +156,7 @@ namespace Clipboard.Native
 				IsErrorOccured(out errorCode);
 			}
 
-			return callSuccessed;
+			return formatsRetreived;
 		}
 		internal static bool TryToEnumClipboardFormats(uint currentFormatId, out uint? nextFormatId, out int? errorCode) // TODO: имя параметров стоит изменить для ясности\явности
 		{
@@ -193,13 +185,13 @@ namespace Clipboard.Native
 		{
 			errorCode = null;
 
-			var availabe = NativeMethods.IsClipboardFormatAvailable(formatId);
-			if (!availabe)
+			var formatAvailabe = NativeMethods.IsClipboardFormatAvailable(formatId);
+			if (!formatAvailabe)
 			{
 				IsErrorOccured(out errorCode);
 			}
 
-			return availabe;
+			return formatAvailabe;
 		}
 		/// <summary>
 		/// Запрашивает в системном буфере обмена имя формата данных основываясь на его идентификаторе.
@@ -216,7 +208,7 @@ namespace Clipboard.Native
 			const int MaxFormatNameLength = 50; // TODO: я даже не знаю сколько запаса здесь стоит брать.
 
 			errorCode = null;
-			bool result;
+			bool formatNameReceived;
 			// При проблемах с производительностью стоит рассмотреть вариант замены инициализации массива символов
 			// на получение этого же массива из пула объектов ArrayPool<T>. (Доступно только в >net core 1.0)
 			var buffer = new char[MaxFormatNameLength];
@@ -224,25 +216,25 @@ namespace Clipboard.Native
 			var foundSymbolsCount = NativeMethods.GetClipboardFormatName(formatId, buffer, buffer.Length);
 			if (foundSymbolsCount is not FormatNameErrorId)
 			{
-				result = true;
+				formatNameReceived = true;
 				formatName = new string(buffer).Trim(EmptyChar);
 			}
 			else
 			{
 				if (IsErrorOccured(out errorCode))
 				{
-					result = false;
+					formatNameReceived = false;
 					formatName = null;
 				}
 				else
 				{
 
-					result = true;
+					formatNameReceived = true;
 					formatName = string.Empty;
 				}
 			}
 
-			return result;
+			return formatNameReceived;
 		}
 		/// <summary>
 		/// Очищает системный буфер обмена от содержимого и освобождает ресурсы. 
@@ -258,13 +250,13 @@ namespace Clipboard.Native
 		internal static bool TryToClearClipboard(out int? errorCode)
 		{
 			errorCode = null;
-			bool isCleared = NativeMethods.EmptyClipboard();
-			if (!isCleared)
+			bool clipboardCleared = NativeMethods.EmptyClipboard();
+			if (!clipboardCleared)
 			{
-				isCleared = !IsErrorOccured(out errorCode);
+				clipboardCleared = !IsErrorOccured(out errorCode);
 			}
 
-			return isCleared;
+			return clipboardCleared;
 		}
 		/// <summary>
 		/// Опрашивает системный буфер обмена для получения идентификатора окна обладающего эксклюзивным доступом
@@ -306,8 +298,11 @@ namespace Clipboard.Native
 			dataPtr = NativeMethods.GetClipboardData(formatId);
 			if (dataPtr == IntPtr.Zero)
 			{
-				dataRetrieved = !IsErrorOccured(out errorCode);
-				dataPtr = null;
+				if (IsErrorOccured(out errorCode))
+				{
+					dataRetrieved = false;
+					dataPtr = null;
+				}
 			}
 
 			return dataRetrieved;
@@ -318,7 +313,7 @@ namespace Clipboard.Native
 		{
 			errorCode = null;
 
-			bool successed = true;
+			bool  globalSizeRetreived = true;
 			var sizePtr = NativeMethods.GlobalSize(memPtr);
 			if (sizePtr != UIntPtr.Zero)
 			{
@@ -327,10 +322,10 @@ namespace Clipboard.Native
 			else
 			{
 				size = 0;
-				successed = !IsErrorOccured(out errorCode);
+				globalSizeRetreived = !IsErrorOccured(out errorCode);
 			}
 
-			return successed;
+			return globalSizeRetreived;
 		}
 		internal static bool TryToGlobalLock(IntPtr memPtr, out IntPtr? lockedMemPtr, out int? errorCode)
 		{
