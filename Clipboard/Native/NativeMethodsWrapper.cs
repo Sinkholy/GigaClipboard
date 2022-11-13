@@ -21,9 +21,14 @@ namespace Clipboard.Native
 		internal static bool TryToSubscribeWindowToClipboardUpdates(IntPtr windowHandler, out int? errorCode)
 		{
 			bool subscribed = NativeMethods.AddClipboardFormatListener(windowHandler);
-			errorCode = subscribed
-					? null
-					: GetLastNativeError();
+			if (subscribed)
+			{
+				errorCode = null;
+			}
+			else
+			{
+				IsErrorOccured(out errorCode);
+			}
 
 			return subscribed;
 		}
@@ -41,9 +46,14 @@ namespace Clipboard.Native
 		internal static bool TryToUnsubscribeWindowFromClipboardUpdates(IntPtr windowHandler, out int? errorCode) // TODO: документация.
 		{
 			bool unsubscribed = NativeMethods.RemoveClipboardFormatListener(windowHandler);
-			errorCode = unsubscribed
-					? null
-					: GetLastNativeError();
+			if (unsubscribed)
+			{
+				errorCode = null;
+			}
+			else
+			{
+				IsErrorOccured(out errorCode);
+			}
 
 			return unsubscribed;
 		}
@@ -66,9 +76,14 @@ namespace Clipboard.Native
 		internal static bool TryToGetExclusiveClipboardControl(IntPtr windowHandler, out int? errorCode)
 		{
 			bool controlGranted = NativeMethods.OpenClipboard(windowHandler);
-			errorCode = controlGranted
-					? null
-					: GetLastNativeError();
+			if (controlGranted)
+			{
+				errorCode = null;
+			}
+			else
+			{
+				IsErrorOccured(out errorCode);
+			}
 
 			return controlGranted;
 		}
@@ -85,9 +100,14 @@ namespace Clipboard.Native
 		internal static bool TryToReturnExclusiveClipboardControl(out int? errorCode)
 		{
 			bool controlReturned = NativeMethods.CloseClipboard();
-			errorCode = controlReturned
-					? null
-					: GetLastNativeError();
+			if (controlReturned)
+			{
+				errorCode = null;
+			}
+			else
+			{
+				IsErrorOccured(out errorCode);
+			}
 
 			return controlReturned;
 		}
@@ -115,6 +135,7 @@ namespace Clipboard.Native
 				if (IsErrorOccured(out errorCode))
 				{
 					// Произошла ошибка.
+					formatsCount = null;
 					result = false;
 				}
 				else
@@ -130,6 +151,20 @@ namespace Clipboard.Native
 			}
 
 			return result;
+		}
+		internal static bool TryGetUpdatedClipboardFormats(uint[] buffer, int bufferSize, out int formatsCount, out int? errorCode)
+		{
+			var callSuccessed = NativeMethods.GetUpdatedClipboardFormats(buffer, bufferSize, out formatsCount);
+			if (callSuccessed)
+			{
+				errorCode = null;
+			}
+			else
+			{
+				IsErrorOccured(out errorCode);
+			}
+
+			return callSuccessed;
 		}
 		internal static bool TryToEnumClipboardFormats(uint currentFormatId, out uint? nextFormatId, out int? errorCode) // TODO: имя параметров стоит изменить для ясности\явности
 		{
@@ -272,6 +307,7 @@ namespace Clipboard.Native
 			if (dataPtr == IntPtr.Zero)
 			{
 				dataRetrieved = !IsErrorOccured(out errorCode);
+				dataPtr = null;
 			}
 
 			return dataRetrieved;
@@ -281,7 +317,6 @@ namespace Clipboard.Native
 		internal static bool TryToGetGlobalSize(IntPtr memPtr, out uint? size, out int? errorCode)
 		{
 			errorCode = null;
-			size = 0;
 
 			bool successed = true;
 			var sizePtr = NativeMethods.GlobalSize(memPtr);
@@ -291,6 +326,7 @@ namespace Clipboard.Native
 			}
 			else
 			{
+				size = 0;
 				successed = !IsErrorOccured(out errorCode);
 			}
 
@@ -304,7 +340,15 @@ namespace Clipboard.Native
 			lockedMemPtr = NativeMethods.GlobalLock(memPtr);
 			if (lockedMemPtr == IntPtr.Zero)
 			{
-				locked = !IsErrorOccured(out errorCode);
+				if (IsErrorOccured(out errorCode))
+				{
+					locked = false;
+					lockedMemPtr = null;
+				}
+				else
+				{
+					locked = true;
+				}
 			}
 
 			return locked;
@@ -332,11 +376,13 @@ namespace Clipboard.Native
 		static bool IsErrorOccured(out int? errorCode)
 		{
 			errorCode = Marshal.GetLastWin32Error();
-			return errorCode != NativeErrorsHelper.ERROR_SUCCESS;
-		}
-		static int GetLastNativeError()
-		{
-			return Marshal.GetLastWin32Error();
+			bool errorOccured = errorCode != NativeErrorsHelper.ERROR_SUCCESS;
+			if (!errorOccured)
+			{
+				errorCode = null;
+			}
+
+			return errorOccured;
 		}
 		#endregion
 	}
