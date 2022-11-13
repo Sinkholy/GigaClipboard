@@ -271,7 +271,7 @@ namespace Clipboard.Native
 			}
 			return windowFound;
 		}
-		internal static bool TryToGetClipboardData(UInt16 formatId, out IntPtr? dataPtr, out int? errorCode)
+		internal static bool TryToGetClipboardData(UInt32 formatId, out IntPtr? dataPtr, out int? errorCode)
 		{
 			errorCode = null;
 			bool dataRetrieved = true;
