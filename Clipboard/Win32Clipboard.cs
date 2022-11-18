@@ -12,7 +12,90 @@ namespace Clipboard
 			this.clipboardWindow = clipboardWindow;
 		}
 
-		internal bool TryGetClipboardData(ushort formatId, out IntPtr? dataPtr)
+		internal bool TrySetClipboardData(uint format, IntPtr handle)
+		{
+			if(!GetExclusiveAccess(out var token))
+			{
+				return false;
+			}
+
+			bool dataSuccessfullySet;
+			using (token)
+			{
+				if (!UnsafeTryToClearClipboard())
+				{
+					dataSuccessfullySet = false;
+				}
+				else
+				{
+					dataSuccessfullySet = UnsafeTrySetClipboardData(format, handle);
+				}
+			}
+
+			return dataSuccessfullySet;
+		}
+		internal bool TrySetClipboardData((uint format, IntPtr handle)[] dataset)
+		{
+			if (!GetExclusiveAccess(out var token))
+			{
+				return false;
+			}
+
+			bool dataSuccessfullySet;
+			using (token)
+			{
+				if (!UnsafeTryToClearClipboard())
+				{
+					dataSuccessfullySet = false;
+				}
+				else
+				{
+					dataSuccessfullySet = false;
+					foreach (var data in dataset)
+					{
+						dataSuccessfullySet = UnsafeTrySetClipboardData(data.format, data.handle);
+					}
+				}
+			}
+
+			return dataSuccessfullySet;
+		}
+		bool UnsafeTrySetClipboardData(uint format, IntPtr handle)
+		{
+			const int RetryCount = 5;
+
+			var currentTry = 0;
+			bool dataSuccessfullySet = NativeMethodsWrapper.TrySetClipboardData(format, handle, out var errorCode);
+			while (!dataSuccessfullySet)
+			{
+				HandleError(errorCode, out bool errorHandled, out bool expectedError);
+				RecordError(errorCode.Value, errorHandled, expectedError);
+
+				bool callsLimitReached = ++currentTry == RetryCount;
+				if (errorHandled is false ||
+					callsLimitReached)
+				{
+					break;
+				}
+
+				dataSuccessfullySet = NativeMethodsWrapper.TryToClearClipboard(out errorCode);
+			}
+			return dataSuccessfullySet;
+
+			void HandleError(int? errorCode, out bool errorHandled, out bool expectedError)
+			{
+				errorHandled = true;
+				expectedError = true;
+				switch (errorCode) // TODO: собрать данные о возможноых ошибках.
+				{
+					default:
+						errorHandled = false;
+						expectedError = false;
+						break;
+				}
+			}
+		}
+		internal bool TryGetClipboardData(uint formatId, out IntPtr? dataPtr)
 		{
 			bool accessGranted = GetExclusiveAccess(out var access);
 			if (!accessGranted)
@@ -175,24 +258,31 @@ namespace Clipboard
 			bool clipboardCleared;
 			using (access)
 			{
-				const int RetryCount = 5;
+				clipboardCleared = UnsafeTryToClearClipboard();
+			}
 
-				var currentTry = 0;
-				clipboardCleared = NativeMethodsWrapper.TryToClearClipboard(out var errorCode);
-				while (!clipboardCleared)
+			return clipboardCleared;
+		}
+
+		bool UnsafeTryToClearClipboard()
+		{
+			const int RetryCount = 5;
+
+			var currentTry = 0;
+			bool clipboardCleared = NativeMethodsWrapper.TryToClearClipboard(out var errorCode);
+			while (!clipboardCleared)
+			{
+				HandleError(errorCode, out bool errorHandled, out bool expectedError);
+				RecordError(errorCode.Value, errorHandled, expectedError);
+
+				bool callsLimitReached = ++currentTry == RetryCount;
+				if (errorHandled is false ||
+					callsLimitReached)
 				{
-					HandleError(errorCode, out bool errorHandled, out bool expectedError);
-					RecordError(errorCode.Value, errorHandled, expectedError);
-
-					bool callsLimitReached = ++currentTry == RetryCount;
-					if (errorHandled is false ||
-						callsLimitReached)
-					{
-						break;
-					}
-
-					clipboardCleared = NativeMethodsWrapper.TryToClearClipboard(out errorCode);
+					break;
 				}
+
+				clipboardCleared = NativeMethodsWrapper.TryToClearClipboard(out errorCode);
 			}
 			return clipboardCleared;
 
@@ -209,7 +299,6 @@ namespace Clipboard
 				}
 			}
 		}
-
 		bool GetExclusiveAccess(out ClipboardExclusiveAccessToken? accessToken)
 		{
 			const int RetryCount = 5;

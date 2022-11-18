@@ -90,5 +90,7 @@ namespace Clipboard.Native
 		internal static extern UIntPtr GlobalSize(IntPtr hMem);
 		[DllImport("user32.dll", SetLastError = true)]
 		internal static extern IntPtr GetClipboardData(uint uFormat);
+		[DllImport("user32.dll", SetLastError = true)]
+		internal static extern IntPtr SetClipboardData(uint uFormat, IntPtr hMem);
 	}
 }

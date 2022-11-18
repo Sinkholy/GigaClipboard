@@ -135,7 +135,8 @@ namespace Clipboard.Native
 				{
 					formatsCount = null;
 					formatsCounted = false;
-				}				
+				}
+				else{ } // Ошибок не произошло, следовательно форматов действительно 0.
 			}
 			else
 			{
@@ -291,6 +292,21 @@ namespace Clipboard.Native
 			}
 			return windowFound;
 		}
+		internal static bool TrySetClipboardData(UInt32 formatId, IntPtr handle, out int? errorCode)
+		{
+			errorCode = null;
+			var returnedDataHandle = NativeMethods.SetClipboardData(formatId, handle);
+			bool dataSuccessfullySet = returnedDataHandle != IntPtr.Zero;
+			if (!dataSuccessfullySet)
+			{
+				bool errorOccured = IsErrorOccured(out errorCode);
+				if(!errorOccured)
+				{
+					dataSuccessfullySet = true;
+				}
+			}
+			return dataSuccessfullySet;
+		}
 		internal static bool TryToGetClipboardData(UInt32 formatId, out IntPtr? dataPtr, out int? errorCode)
 		{
 			errorCode = null;
@@ -313,7 +329,7 @@ namespace Clipboard.Native
 		{
 			errorCode = null;
 
-			bool  globalSizeRetreived = true;
+			bool globalSizeRetreived = true;
 			var sizePtr = NativeMethods.GlobalSize(memPtr);
 			if (sizePtr != UIntPtr.Zero)
 			{
