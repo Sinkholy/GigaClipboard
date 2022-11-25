@@ -9,7 +9,8 @@ using Clipboard.Native;
 using API;
 using static API.IClipboard;
 using System.Runtime.InteropServices;
-using System.Diagnostics.CodeAnalysis;
+using System.Text;
+using Clipboard.Native.Memory;
 
 namespace Clipboard
 {
@@ -18,246 +19,208 @@ namespace Clipboard
 		readonly Win32Window clipboardWindow;
 		readonly Win32Clipboard systemClipboard;
 		readonly Win32ClipboardListener clipboardListener;
-		readonly MemoryLocker memoryLocker;
+		readonly HandleableFormats formatsToHandle;
+		readonly DuplicationPreventer duplicationPreventer;
 		bool isDisposed;
-		ClipboardData lastObtainedData;
+
+		ClipboardData? cachedData;
 
 		public Clipboard()
 		{
 			isDisposed = false;
-			SuppressDuplicates = true;
 
 			clipboardWindow = new MessageOnlyWin32Window();
+
 			systemClipboard = new Win32Clipboard(clipboardWindow);
+
 			clipboardListener = new Win32ClipboardListener(clipboardWindow);
 			clipboardListener.ClipboardUpdated += OnClipboardUpdated;
-			memoryLocker = new MemoryLocker();
+
+			duplicationPreventer = new DuplicationPreventer();
+			SuppressDuplicates = true;
+
+			formatsToHandle = new HandleableFormats();
+			formatsToHandle.RegisterPredefinedFormat();
 		}
 
-		private void OnClipboardUpdated()
-		{
-			bool shouldRiseEvent = true;
-
-			if (SuppressDuplicates)
-			{
-				var newClipboardData = GetData();
-				var comparer = new ClipboardDataEqualityComparer();
-				bool isDuplicate = comparer.Equals(lastObtainedData, newClipboardData);
-				shouldRiseEvent = !isDuplicate;
-				lastObtainedData = newClipboardData;
-			}
-
-			if (shouldRiseEvent)
-			{
-				NewClipboardDataObtained();
-			}
-		}
 		/// <summary>
 		/// Сигнализирует о том, что в буфер обмена попали новые данные.
 		/// </summary>
 		public event Action NewClipboardDataObtained = delegate { };
-		public bool SuppressDuplicates { get; set; }
-
-		/// <summary>
-		/// Опрашивает системный буфер обмена на тип в котором хранятся данные и возвращает
-		/// управляющей стороне соответствующий внутренний тип.
-		/// </summary>
-		/// <returns>Тип в котором данные находятся в буфере обмена.</returns>
-		public DataType? GetDataType()
+		public bool SuppressDuplicates
 		{
-			DataType? dataType = null;
-			// В зависимости от данных находящихся в буфере обмена установить тип данных.
-			if (IsDataTextFormated())
-			{
-				dataType = DataType.Text;
-			}
-			else if (WPFClipboard.ContainsImage())
-			{
-				dataType = DataType.Image;
-			}
-			else if (WPFClipboard.ContainsFileDropList())
-			{
-				dataType = DataType.FileDrop;
-			}
-			else if (WPFClipboard.ContainsAudio())
-			{
-				dataType = DataType.Audio;
-			}
-
-			return dataType;
-
-			static bool IsDataTextFormated() // TODO: небоходимо проверить последовательность форматов.
-			{
-				// Текстовые данные могут храниться в системном буфере обмена в разных форматах, разные форматы
-				// имеют разную полноту описания.
-				// Здесь данные расположены от наиболее описательного к наименее описательному.
-				// https://docs.microsoft.com/en-us/windows/win32/dataxchg/clipboard-formats#multiple-clipboard-formats
-				return WPFClipboard.ContainsText(System.Windows.TextDataFormat.Xaml) ||
-					   WPFClipboard.ContainsText(System.Windows.TextDataFormat.CommaSeparatedValue) ||
-					   WPFClipboard.ContainsText(System.Windows.TextDataFormat.Html) ||
-					   WPFClipboard.ContainsText(System.Windows.TextDataFormat.Rtf) ||
-					   WPFClipboard.ContainsText(System.Windows.TextDataFormat.UnicodeText) ||
-					   WPFClipboard.ContainsText(System.Windows.TextDataFormat.Text);
-			}
+			get => duplicationPreventer.SuppressDuplicates;
+			set => duplicationPreventer.SuppressDuplicates = value;
 		}
 
-		#region Data getter's
-		public ClipboardData? GetData()
+		void OnClipboardUpdated()
 		{
-			var dataType = GetDataType();
-			return dataType switch
+			if (DataWasSetByThisClipboard())
 			{
-				DataType.Text => GetText(),
-				DataType.Image => GetImage(),
-				DataType.Audio => GetAudio(),
-				DataType.FileDrop => GetFileDrop(),
-				_ => null // TODO: ????
-			};
-		}
-		/// <summary>
-		/// Опрашивает буфер обмена на формат текста в котором хранятся данные затем 
-		/// запрашивает данные в соответствующем формате и возвращает их управляющей стороне.
-		/// </summary>
-		/// <remarks>
-		/// Для проверки типа данных находящихся в системному буфере обмена используйте
-		/// <see cref="GetCurrentDataType"/>
-		/// </remarks>
-		/// <returns>
-		/// Данные находящиеся в буфере обмена если они могут быть представлены в формате текста,
-		/// иначе <see langword="null"/>.
-		/// </returns>
-		public ClipboardData<string>? GetText()
-		{
-			string text = null;
-
-			if (WPFClipboard.ContainsText(System.Windows.TextDataFormat.Xaml))
-			{
-				text = WPFClipboard.GetText(System.Windows.TextDataFormat.Xaml);
-			}
-			else if (WPFClipboard.ContainsText(System.Windows.TextDataFormat.CommaSeparatedValue))
-			{
-				text = WPFClipboard.GetText(System.Windows.TextDataFormat.CommaSeparatedValue);
-			}
-			else if (WPFClipboard.ContainsText(System.Windows.TextDataFormat.Html))
-			{
-				text = WPFClipboard.GetText(System.Windows.TextDataFormat.Html);
-			}
-			else if (WPFClipboard.ContainsText(System.Windows.TextDataFormat.Rtf))
-			{
-				text = WPFClipboard.GetText(System.Windows.TextDataFormat.Rtf);
-			}
-			else if (WPFClipboard.ContainsText(System.Windows.TextDataFormat.UnicodeText))
-			{
-				text = WPFClipboard.GetText(System.Windows.TextDataFormat.UnicodeText);
-			}
-			else if (WPFClipboard.ContainsText(System.Windows.TextDataFormat.Text))
-			{
-				text = WPFClipboard.GetText(System.Windows.TextDataFormat.Text);
+				return;
 			}
 
-			return text is not null
-					? new ClipboardData<string>(text, DataType.Text)
-					: null;
-		}
-		/// <summary>
-		/// Запрашивает данные из буфера обмена в формате аудио-потока и возвращает их управляющей стороне.
-		/// </summary>
-		/// <remarks>
-		/// Для проверки типа данных находящихся в системному буфере обмена используйте
-		/// <see cref="GetCurrentDataType"/>
-		/// </remarks>
-		/// <returns>
-		/// Данные находящиеся в буфере обмена если они могут быть представлены в формате аудио-потока,
-		/// иначе <see langword="null"/>.
-		/// </returns>
-		public ClipboardData<Stream>? GetAudio()
-		{
-			return WPFClipboard.GetAudioStream() is Stream data
-					? new ClipboardData<Stream>(data, DataType.Audio)
-					: null;
-		}
-		/// <summary>
-		/// Запрашивает данные из буфера обмена в формате изображения и возвращает их управляющей стороне.
-		/// </summary>
-		/// <remarks>
-		/// Для проверки типа данных находящихся в системному буфере обмена используйте
-		/// <see cref="GetCurrentDataType"/>
-		/// </remarks>
-		/// <returns>
-		/// Данные находящиеся в буфере обмена если они могут быть представлены в формате изображения,
-		/// иначе <see langword="null"/>.
-		/// </returns>
-		public ClipboardData<BinaryData>? GetImage()
-		{
-			const ushort CF_DIBV5 = 17;
-
-			var imageFormatId = CF_DIBV5;
-			byte[] imageBinaryData;
-			if (systemClipboard.TryGetClipboardData(imageFormatId, out var dataPtr)
-			 && memoryLocker.TryToLockMemory(dataPtr.Value, out var lockedMemory))
+			uint? formatToBeHanled = null;
+			foreach (var format in systemClipboard.EnumerateDataFormats())
 			{
-				using (lockedMemory)
+				if (formatsToHandle.IsHandleableFormat(format))
 				{
-					imageBinaryData = CopyBinaryFromUnmanagedMemory(lockedMemory.Pointer);
+					formatToBeHanled = format;
+					break;
 				}
 			}
-			else
+
+			bool dataCannotBeHandled = !formatToBeHanled.HasValue;
+			if (dataCannotBeHandled)
 			{
-				imageBinaryData = Array.Empty<byte>();
-				// TODO: логирование ошибки.
+				return;
 			}
 
-			return imageBinaryData.Length != 0
-											? new ClipboardData<BinaryData>(new BinaryData(imageBinaryData), DataType.Image)
-											: null;
-
-			byte[] CopyBinaryFromUnmanagedMemory(IntPtr unmanagedMemoryPointer)
+			if (!systemClipboard.TryGetClipboardData(formatToBeHanled.Value, out var dataGHandle))
 			{
-				if (NativeMethodsWrapper.TryToGetGlobalSize(unmanagedMemoryPointer, out var size, out var errorCode))
+				// Вызвать событие о происшествии ошибки или просто логировать?
+				return;
+			}
+
+			var dataCopy = NativeMemoryManager.CopyUnmanagedFromGHandle(dataGHandle.Value);
+
+			if (duplicationPreventer.IsDuplicate(dataCopy))
+			{
+				return;
+			}
+
+			var clipboardData = HandleClipboardData(formatToBeHanled.Value, dataCopy);
+			cachedData = clipboardData;
+
+			NewClipboardDataObtained();
+
+
+
+			bool DataWasSetByThisClipboard()
+			{
+				return NativeMethodsWrapper.IsClipboardFormatAvailable(formatsToHandle.PredefinedFormat, out _);
+			}
+			ClipboardData HandleClipboardData(uint format, NativeMemoryManager.NativeMemorySegment memory)
+			{
+				ClipboardData handledData;
+				if (IsTextData())
 				{
-					var buffer = new byte[size.Value];
-					Marshal.Copy(unmanagedMemoryPointer, buffer, 0, (int)size.Value);
-					return buffer;
+					handledData = HandleTextData();
+				}
+				else if (IsFileDropData())
+				{
+					handledData = HandleFileDropData();
+				}
+				else if (IsImageData())
+				{
+					handledData = HandleImageData();
 				}
 				else
 				{
-					return Array.Empty<byte>(); // TODO: затычка.
-												// TODO: ошибка
+					handledData = null;
+					// TODO: тут нужен Assert, ведь формат был предварительно проверен.
+				}
+				return handledData;
+
+
+
+				bool IsTextData()
+				{
+					return format is HandleableFormats.ASCIIText
+								  or HandleableFormats.OemText
+								  or HandleableFormats.UnicodeText;
+				}
+				bool IsImageData()
+				{
+					return format is HandleableFormats.Dib
+								  or HandleableFormats.DibV5;
+				}
+				bool IsFileDropData()
+				{
+					return format is HandleableFormats.FileDrop;
+				}
+				ClipboardData HandleTextData()
+				{
+					var text = format switch
+					{
+						HandleableFormats.UnicodeText => Encoding.Unicode.GetString(memory.AsSpan()),
+						HandleableFormats.ASCIIText => Encoding.ASCII.GetString(memory.AsSpan()),
+						HandleableFormats.OemText => Encoding.UTF8.GetString(memory.AsSpan())
+					};
+
+					return new ClipboardData<string>(text, DataType.Text);
+				}
+				ClipboardData HandleFileDropData()
+				{
+
+					var filesCount = GetFilesCount(memory.AsIntPtr());
+					var fileDrop = new List<string>((int)filesCount);
+					for (int i = 0; i < filesCount; i++)
+					{
+						var fileNameBytes = new byte[GetFileNameLength(memory.AsIntPtr(), i) + 1];
+						var result = DragQueryFile(memory.AsIntPtr(), i, fileNameBytes, fileNameBytes.Length);
+						var span = new ReadOnlySpan<byte>(fileNameBytes, 0, fileNameBytes.Length - 1);
+						fileDrop.Add(Encoding.Default.GetString(span));
+					}
+
+					return new ClipboardData<IReadOnlyCollection<string>>(fileDrop, DataType.FileDrop);
+
+
+
+					uint GetFileNameLength(IntPtr memPtr, int fileIndex)
+					{
+						return DragQueryFile(memPtr, fileIndex, null, 0);
+					}
+					uint GetFilesCount(IntPtr memPtr)
+					{
+						return DragQueryFile(memPtr, -1, null, 0);
+					}					
+					[DllImport("Shell32.dll", SetLastError = true)]
+					static extern uint DragQueryFile(IntPtr hMem, int iFile, [Out] byte[] buffer, int bufferSize);
+				}
+				ClipboardData HandleImageData()
+				{
+					var binaryData = new BinaryData(memory.AsSpan().ToArray()); // TODO: изменить апи?
+					return new ClipboardData<BinaryData>(binaryData, DataType.Image);
 				}
 			}
 		}
-		/// <summary>
-		/// Запрашивает данные из буфера обмена в формате коллекции путей к расположению файлов на дисковой системе 
-		/// и возвращает их управляющей стороне.
-		/// </summary>
-		/// <remarks>
-		/// Для проверки типа данных находящихся в системному буфере обмена используйте
-		/// <see cref="GetCurrentDataType"/>
-		/// </remarks>
-		/// <returns>
-		/// Данные находящиеся в буфере обмена если они могут быть представлены в коллекции путей к расположению файлов,
-		/// иначе <see langword="null"/>.
-		/// </returns>
+		public ClipboardData? GetData()
+		{
+			return cachedData;
+		}
+		public DataType? GetDataType()
+		{
+			return cachedData?.DataType;
+		}
+
+		public ClipboardData<BinaryData>? GetImage()
+		{
+			return cachedData is ClipboardData<BinaryData> castedData
+							? castedData
+							: null;
+		}
+
+		public ClipboardData<string>? GetText()
+		{
+			return cachedData is ClipboardData<string> castedData
+							? castedData
+							: null;
+		}
+
 		public ClipboardData<IReadOnlyCollection<string>>? GetFileDrop()
 		{
-			var rawFileDrop = WPFClipboard.GetFileDropList();
-			return rawFileDrop is not null
-								? new ClipboardData<IReadOnlyCollection<string>>(ConvertFromRaw(rawFileDrop), DataType.FileDrop)
-								: null;
-
-			static IReadOnlyCollection<string> ConvertFromRaw(StringCollection rawFileDrop)
-			{
-				var converted = new List<string>(rawFileDrop.Count);
-				foreach (var file in rawFileDrop)
-				{
-					converted.Add(file);
-				}
-
-				return converted;
-			}
+			return cachedData is ClipboardData<IReadOnlyCollection<string>> castedData
+				? castedData
+				: null;
 		}
-		#endregion
 
+		public ClipboardData<Stream>? GetAudio()
+		{
+			return cachedData is ClipboardData<Stream> castedData
+							? castedData
+							: null;
+		}
 		#region Data setter's
 		/// <summary>
 		/// Инкапсулирует обращение к системному буферу обмена для формирования абстракции и
@@ -268,7 +231,26 @@ namespace Clipboard
 		{
 			VerifyParameterIsNotNull(text, nameof(text));
 
-			WPFClipboard.SetText(text, System.Windows.TextDataFormat.UnicodeText);
+			var dataSet = new (uint format, GlobalHandle handle)[]
+			{
+				new (HandleableFormats.UnicodeText, CreateUnicodeHandle()),
+				new (formatsToHandle.PredefinedFormat, NativeMemoryManager.CreateEmptyGHandle())
+			};
+			// Мы устанавливаем текст лишь в одном формате (Unicode) потому что
+			// система автоматически конвертирует (создает synthesized format)
+			// текст в несколько разных форматов. 
+			// В данном случае она автоматически конвертирует Unicode текст
+			// в 4 формата: 13, 16, 1, 7
+			systemClipboard.TrySetClipboardData(dataSet);
+
+			GlobalHandle CreateUnicodeHandle()
+			{
+				var textBytes = Encoding.Unicode.GetBytes(text);
+				var gHandle = NativeMemoryManager.CreateGHandle((uint)(textBytes.Length));
+				NativeMemoryManager.CopyToGHandle(gHandle, textBytes);
+
+				return gHandle;
+			}
 		}
 
 		/// <summary>
@@ -325,7 +307,10 @@ namespace Clipboard
 
 		public void ClearClipboard()
 		{
-			systemClipboard.TryClearClipboard();
+			if (!systemClipboard.TryClearClipboard())
+			{
+				//TODO: Вызвать событие о происшествии ошибки или просто логировать?
+			}
 		}
 
 		static void VerifyParameterIsNotNull<T>(T paramValue, string paramName)
@@ -345,6 +330,7 @@ namespace Clipboard
 			GC.SuppressFinalize(this);
 			isDisposed = true;
 		}
+
 		~Clipboard()
 		{
 			if (isDisposed)
@@ -355,191 +341,69 @@ namespace Clipboard
 		}
 		#endregion
 
-
-		class ClipboardDataEqualityComparer : IEqualityComparer<ClipboardData>
+		internal class DuplicationPreventer
 		{
-			public bool Equals(ClipboardData? x, ClipboardData? y)
+			NativeMemoryManager.NativeMemorySegment prev;
+
+			internal bool SuppressDuplicates { get; set; }
+
+			internal bool IsDuplicate(NativeMemoryManager.NativeMemorySegment current)
 			{
-				if (x is null || y is null)
+				if (!SuppressDuplicates)
 				{
 					return false;
 				}
 
-				if (x.DataType != y.DataType)
-				{
-					return false;
-				}
-				bool dataEqual = true;
+				bool isDuplicate = prev is not null &&
+									prev.AsSpan().SequenceEqual(current.AsSpan());
 
-				switch (x.DataType)
+				if (!isDuplicate)
 				{
-					case DataType.Text:
-						if (x is ClipboardData<string> xText &&
-							y is ClipboardData<string> yText)
-						{
-							dataEqual = CompareText(xText, yText);
-						}
-						else
-						{
-							// TODO: стоит ли здесь каким-то образом уведомлять о том, что данные не могут быть преобразованы?
-							dataEqual = false;
-						}
-						break;
-					case DataType.Image:
-						if (x is ClipboardData<BinaryData> xBinary &&
-							y is ClipboardData<BinaryData> yBinary)
-						{
-							dataEqual = CompareImages(xBinary, yBinary);
-						}
-						else
-						{
-							// TODO: стоит ли здесь каким-то образом уведомлять о том, что данные не могут быть преобразованы?
-							dataEqual = false;
-						}
-						break;
-					case DataType.Audio:
-						if (x is ClipboardData<Stream> xAudio &&
-							y is ClipboardData<Stream> yAudio)
-						{
-							dataEqual = CompareAudio(xAudio, yAudio);
-						}
-						else
-						{
-							// TODO: стоит ли здесь каким-то образом уведомлять о том, что данные не могут быть преобразованы?
-							dataEqual = false;
-						}
-						break;
-					case DataType.FileDrop:
-						if (x is ClipboardData<IReadOnlyCollection<string>> xFileDrop &&
-							y is ClipboardData<IReadOnlyCollection<string>> yFileDrop)
-						{
-							dataEqual = CompareFileDrop(xFileDrop, yFileDrop);
-						}
-						else
-						{
-							// TODO: стоит ли здесь каким-то образом уведомлять о том, что данные не могут быть преобразованы?
-							dataEqual = false;
-						}
-						break;
+					prev?.Dispose();
+					prev = current;
 				}
 
-				return dataEqual;
-			}
-
-			public int GetHashCode([DisallowNull] ClipboardData obj)
-			{
-				return obj.GetHashCode();
-			}
-
-			static bool CompareImages(ClipboardData<BinaryData> a, ClipboardData<BinaryData> b)
-			{
-				var aBinaryArray = a.Data.GetBytes();
-				var bBinaryArray = b.Data.GetBytes();
-
-				// TODO: возможно нужна проверка на пустые массивы?
-
-				if (aBinaryArray.Length != bBinaryArray.Length)
-				{
-					return false;
-				}
-
-				bool distinctionFound = false;
-				for (int i = 0; i < aBinaryArray.Length; i++)
-				{
-					distinctionFound = aBinaryArray[i] != bBinaryArray[i];
-
-					if (distinctionFound)
-					{
-						break;
-					}
-				}
-				return !distinctionFound;
-			}
-			static bool CompareFileDrop(ClipboardData<IReadOnlyCollection<string>> a,
-										ClipboardData<IReadOnlyCollection<string>> b)
-			{
-				var aCollection = a.Data;
-				var bCollection = b.Data;
-
-				if (aCollection.Count != bCollection.Count)
-				{
-					return false;
-				}
-
-				bool distinctionFound = false;
-				for (int i = 0; i < aCollection.Count; i++)
-				{
-					var aElement = aCollection.ElementAt(i);
-					var bElement = bCollection.ElementAt(i);
-
-					distinctionFound = !string.Equals(aElement, bElement, StringComparison.Ordinal);
-
-					if (distinctionFound)
-					{
-						break;
-					}
-				}
-
-				return !distinctionFound;
-			}
-			static bool CompareText(ClipboardData<string> a, ClipboardData<string> b)
-			{
-				var aText = a.Data;
-				var bText = b.Data;
-
-				return string.Equals(aText, bText, StringComparison.Ordinal);
-			}
-			static bool CompareAudio(ClipboardData<Stream> a, ClipboardData<Stream> b)
-			{
-				const int bufferSize = 128;
-
-				var aStream = a.Data;
-				var bStream = b.Data;
-
-				if (aStream.Length != bStream.Length)
-				{
-					return false;
-				}
-
-				bool distinctionFound = false;
-
-				var aBuffer = new byte[bufferSize];
-				var bBuffer = new byte[bufferSize];
-				while (aStream.Read(aBuffer) > 0)
-				{
-					bStream.Read(bBuffer);
-					distinctionFound = !aBuffer.SequenceEqual(bBuffer);
-
-					if (distinctionFound)
-					{
-						break;
-					}
-				}
-				aStream.Seek(0, SeekOrigin.Begin);
-				bStream.Seek(0, SeekOrigin.Begin);
-
-				return !distinctionFound;
+				return isDuplicate;
 			}
 		}
-		#region Exceptions
-		public abstract class ClipboardException : Exception
+		class HandleableFormats
 		{
-			protected ClipboardException(string message)
-				: base(message)
-			{ }
+			const string PredefinedFormatName = "GigaClipboard_PredefinedFormat";
+
+			internal const uint Dib = 8;
+			internal const uint DibV5 = 17;
+
+			internal const uint FileDrop = 15;
+
+			internal const uint UnicodeText = 13;
+			internal const uint OemText = 7;
+			internal const uint ASCIIText = 1;
+
+			readonly uint[] formats;
+
+			public HandleableFormats()
+			{
+				formats = new uint[]
+				{
+					Dib,
+					DibV5,
+					FileDrop,
+					UnicodeText,
+					ASCIIText,
+					OemText
+				};
+			}
+
+			internal void RegisterPredefinedFormat()
+			{
+				PredefinedFormat = NativeMethods.RegisterClipboardFormat(PredefinedFormatName);
+			}
+			internal bool IsHandleableFormat(uint format)
+			{
+				return formats.Contains(format);
+			}
+
+			internal uint PredefinedFormat { get; private set; }
 		}
-		public class ExclusiveControlException : ClipboardException
-		{
-			public ExclusiveControlException(string message)
-				: base(message)
-			{ }
-		}
-		public class InicializationException : ClipboardException
-		{
-			public InicializationException(string message)
-				: base(message)
-			{ }
-		}
-		#endregion
 	}
 }
