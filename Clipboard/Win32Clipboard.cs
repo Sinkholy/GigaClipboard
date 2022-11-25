@@ -1,4 +1,5 @@
 ﻿using Clipboard.Native;
+using Clipboard.Native.Memory;
 
 namespace Clipboard
 {
@@ -12,7 +13,7 @@ namespace Clipboard
 			this.clipboardWindow = clipboardWindow;
 		}
 
-		internal bool TrySetClipboardData(uint format, IntPtr handle)
+		internal bool TrySetClipboardData(uint format, GlobalHandle handle)
 		{
 			if(!GetExclusiveAccess(out var token))
 			{
@@ -34,7 +35,7 @@ namespace Clipboard
 
 			return dataSuccessfullySet;
 		}
-		internal bool TrySetClipboardData((uint format, IntPtr handle)[] dataset)
+		internal bool TrySetClipboardData((uint format, GlobalHandle handle)[] dataset)
 		{
 			if (!GetExclusiveAccess(out var token))
 			{
@@ -60,12 +61,12 @@ namespace Clipboard
 
 			return dataSuccessfullySet;
 		}
-		bool UnsafeTrySetClipboardData(uint format, IntPtr handle)
+		bool UnsafeTrySetClipboardData(uint format, GlobalHandle handle)
 		{
 			const int RetryCount = 5;
 
 			var currentTry = 0;
-			bool dataSuccessfullySet = NativeMethodsWrapper.TrySetClipboardData(format, handle, out var errorCode);
+			bool dataSuccessfullySet = NativeMethodsWrapper.TrySetClipboardData(format, handle.Pointer, out var errorCode);
 			while (!dataSuccessfullySet)
 			{
 				HandleError(errorCode, out bool errorHandled, out bool expectedError);
@@ -95,12 +96,12 @@ namespace Clipboard
 				}
 			}
 		}
-		internal bool TryGetClipboardData(uint formatId, out IntPtr? dataPtr)
+		internal bool TryGetClipboardData(uint formatId, out GlobalHandle? globalHandle)
 		{
 			bool accessGranted = GetExclusiveAccess(out var access);
 			if (!accessGranted)
 			{
-				dataPtr = null;
+				globalHandle = null;
 				return false;
 			}
 
@@ -110,7 +111,7 @@ namespace Clipboard
 				const int RetryCount = 5;
 
 				int currentTry = 0;
-				dataRetreived = NativeMethodsWrapper.TryToGetClipboardData(formatId, out dataPtr, out var errorCode);
+				dataRetreived = NativeMethodsWrapper.TryToGetClipboardData(formatId, out var dataPtr, out var errorCode);
 				while (!dataRetreived)
 				{
 					HandleError(errorCode, out bool errorHandled, out bool expectedError);
@@ -125,7 +126,12 @@ namespace Clipboard
 
 					dataRetreived = NativeMethodsWrapper.TryToGetClipboardData(formatId, out dataPtr, out errorCode);
 				}
+
+				globalHandle = dataRetreived 
+							? new GlobalHandle() { Pointer = dataPtr.Value } 
+							: null;
 			}
+
 			return dataRetreived;
 
 			void HandleError(int? errorCode, out bool errorHandled, out bool expectedError)
