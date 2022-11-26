@@ -1,41 +1,37 @@
 ﻿using Clipboard.Native;
+using Clipboard.Exceptions;
 
 namespace Clipboard
 {
 	internal class ClipboardFormats
 	{
-		internal static bool TryGetAvailableClipboardFormats(out uint[]? formats)
+		internal static uint[] GetAvailableClipboardFormats()
 		{
-			formats = new uint[GetFormatsCount()];
+			uint[] formats = new uint[GetFormatsCount()];
 			// TODO: Здесь возможно потребуется закрепить (pin) массив для оптимизации.
+			// TODO: лучше сделать это непосредственно в NMW.
 			// https://learn.microsoft.com/en-us/dotnet/framework/interop/copying-and-pinning?source=recommendations
-			var received = NativeMethodsWrapper.TryGetUpdatedClipboardFormats(formats, formats.Length, out _, out var errorCode);
 			int currentTry = 0;
-			while (!received)
+			while (!NativeMethodsWrapper.TryGetUpdatedClipboardFormats(formats, formats.Length, out _, out var errorCode))
 			{
 				const int RetryCount = 5;
 
-				HandleError(errorCode, out bool errorHandled, out bool expectedError);
-				// TODO: логируем ошибку
+				HandleError(errorCode.Value);
 
 				bool callsLimitReached = ++currentTry < RetryCount;
-				if (errorHandled is false ||
-					callsLimitReached)
+				if (callsLimitReached)
 				{
-					break;
+					throw new CallsLimitException(RetryCount);
 				}
-
-				received = NativeMethodsWrapper.TryGetUpdatedClipboardFormats(formats, formats.Length, out _, out errorCode);
 			}
 
-			if(!received)
-			{
-				formats = null;
-			}
-			return received;
+			return formats;
+
+
 
 			int GetFormatsCount()
 			{
+				// TODO: посмотреть метод к переработке.
 				const int DefaultFormatsCount = 30;
 
 				var formatsCounted = NativeMethodsWrapper.TryToCountPresentedFormats(out int? formatsCount, out var errorCode);
@@ -44,42 +40,36 @@ namespace Clipboard
 					? formatsCount.Value
 					: DefaultFormatsCount;
 			}
-			void HandleError(int? errorCode, out bool errorHandled, out bool expectedError)
+			void HandleError(int errorCode)
 			{
-				errorHandled = true;
-				expectedError = true;
 				switch (errorCode) // TODO: собрать данные о потенциальных ошибках.
 				{
 					default:
-						errorHandled = false;
-						expectedError = false;
-						break;
+						throw new UnhandledNativeErrorException(NativeErrorsHelper.CreateNativeErrorFromCode(errorCode));
 				}
 			}
 		}
-		internal static bool TryGetFormatName(uint formatId, out string? formatName)
+		internal static string GetFormatName(uint formatId)
 		{
-
 			// Документация метода GetClipboardFormatName гласит, что параметром представляющим
 			// идентификатор формата ([in] format) не должны передаваться идентификаторы предопреленных
 			// форматов. https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getclipboardformatnamea#parameters
 			// Здесь проверяется является ли формат предпоределенным системой.
-			bool nameObtained;
-			bool isPredefinedFormat = PredefinedFormats.Contains(formatId);
-			if (isPredefinedFormat)
+			if (IsPredefinedFormat(formatId))
 			{
-				nameObtained = PredefinedFormats.TryGetFormatById(formatId, out formatName);
+				return PredefinedFormats.GetFormatName(formatId);
 			}
 			else
 			{
-				nameObtained = NativeMethodsWrapper.TryToGetClipboardFormatName(formatId, out formatName, out var errorCode);
-				if (!nameObtained)
+				if(NativeMethodsWrapper.TryToGetClipboardFormatName(formatId, out var formatName, out var errorCode))
 				{
-					// TODO: логируем ошибку.
+					return formatName;
+				}
+				else
+				{
+					return string.Empty;
 				}
 			}
-
-			return nameObtained;
 		}
 		internal static bool IsPredefinedFormat(uint formatId)
 		{
@@ -148,6 +138,10 @@ namespace Clipboard
 				return SystemPredefinedClipboardFormats.Values.Contains(formatName);
 			}
 
+			internal static string GetFormatName(uint formatId)
+			{
+				return SystemPredefinedClipboardFormats[formatId];
+			}
 			internal static bool TryGetFormatById(uint formatId, out string? formatName)
 			{
 				return SystemPredefinedClipboardFormats.TryGetValue(formatId, out formatName);
