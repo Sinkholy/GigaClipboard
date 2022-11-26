@@ -143,10 +143,29 @@ namespace Clipboard
 			// TODO: логировать ошибку.
 		}
 
-		public void Dispose()
+		#region Disposing
+		bool disposed = false;
+		protected virtual void Dispose(bool disposing)
 		{
-			UnsubscribeFromClipboardUpdates();
-			messagesReceiverWindow.NewWindowMessageReceived -= OnNewWindowMessageReceived;
+			if (disposed)
+			{
+				return;
+			}
+
+			if (disposing)
+			{
+				ClipboardUpdated = null;
+				if (messagesReceiverWindow is not null)
+				{
+					UnsubscribeFromClipboardUpdates(); // TODO: считать ли это неуправляемыми ресурсами?
+					messagesReceiverWindow.NewWindowMessageReceived -= OnNewWindowMessageReceived;
+				}
+			}
+
+			disposed = true;
 		}
+		public void Dispose()
+			=> Dispose(true);
+		#endregion
 	}
 }

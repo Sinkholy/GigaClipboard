@@ -110,7 +110,7 @@ namespace Clipboard.Native.Memory
 		{
 			Buffer.MemoryCopy(source, destination, memSize, memSize);
 		}
-		
+
 
 
 		internal class NativeMemorySegment : IDisposable
@@ -118,7 +118,7 @@ namespace Clipboard.Native.Memory
 			unsafe readonly void* memoryPtr;
 			readonly uint memorySize;
 
-			public unsafe NativeMemorySegment(void* memoryPtr, uint memorySize)
+			internal unsafe NativeMemorySegment(void* memoryPtr, uint memorySize)
 			{
 				this.memoryPtr = memoryPtr;
 				this.memorySize = memorySize;
@@ -151,10 +151,27 @@ namespace Clipboard.Native.Memory
 				return default; // TODO: WTF
 			}
 
+			#region Disposing
+			bool disposed = false;
+			protected virtual void Dispose(bool disposing)
+			{
+				if (disposed)
+				{
+					return;
+				}
+
+				NativeMemoryManager.Free(this);
+
+				disposed = true;
+			}
 			public void Dispose()
 			{
-				NativeMemoryManager.Free(this);
-			}
+				Dispose(true);
+				GC.SuppressFinalize(this);
+			} 
+			~NativeMemorySegment()
+				=> Dispose(false);
+			#endregion
 		}
 		static class GHandleLocker
 		{

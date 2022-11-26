@@ -21,14 +21,11 @@ namespace Clipboard
 		readonly Win32ClipboardListener clipboardListener;
 		readonly HandleableFormats formatsToHandle;
 		readonly DuplicationPreventer duplicationPreventer;
-		bool isDisposed;
 
 		ClipboardData? cachedData;
 
 		public Clipboard()
 		{
-			isDisposed = false;
-
 			clipboardWindow = new MessageOnlyWin32Window();
 
 			systemClipboard = new Win32Clipboard(clipboardWindow);
@@ -322,26 +319,29 @@ namespace Clipboard
 		}
 
 		#region Disposing
-		public void Dispose() // TODO: разобраться с dispose-паттерном в C#.
+		bool disposed = false;
+		void Dispose(bool disposing)
 		{
-			clipboardListener.Dispose();
-			systemClipboard.Dispose();
-			clipboardWindow.Dispose();
-			GC.SuppressFinalize(this);
-			isDisposed = true;
-		}
-
-		~Clipboard()
-		{
-			if (isDisposed)
+			if (disposed)
 			{
 				return;
 			}
-			Dispose();
+
+			if (disposing)
+			{
+				clipboardListener.Dispose();
+				systemClipboard.Dispose();
+				clipboardWindow.Dispose();
+				duplicationPreventer.Dispose();
+			}
+
+			disposed = true;
 		}
+		public void Dispose()
+			=> Dispose(true);
 		#endregion
 
-		internal class DuplicationPreventer
+		internal class DuplicationPreventer : IDisposable
 		{
 			NativeMemoryManager.NativeMemorySegment prev;
 
@@ -365,6 +365,27 @@ namespace Clipboard
 
 				return isDuplicate;
 			}
+
+			#region Disposing
+			bool disposed = false;
+			void Dispose(bool disposing)
+			{
+				if (disposed)
+				{
+					return;
+				}
+
+				if (disposing)
+				{
+					prev?.Dispose();
+					prev = null;
+				}
+
+				disposed = true;
+			}
+			public void Dispose()
+				=> Dispose(true);
+			#endregion
 		}
 		class HandleableFormats
 		{

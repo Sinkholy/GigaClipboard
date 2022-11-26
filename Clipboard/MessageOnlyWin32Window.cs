@@ -52,10 +52,20 @@ namespace Clipboard
 			return IntPtr.Zero;
 		}
 
-		public override void Dispose()
+		#region Disposing
+		bool disposed = false;
+		protected override void Dispose(bool disposing)
 		{
-			hwndSource.RemoveHook(WindowsMessagesInterceptor);
-			hwndSource.Dispose();
+			if (!disposed)
+			{
+				hwndSource.RemoveHook(WindowsMessagesInterceptor);
+				hwndSource.Dispose();
+
+				disposed = true;
+			}
+			
+			base.Dispose(disposing);
 		}
+		#endregion
 	}
 }

@@ -413,11 +413,29 @@ namespace Clipboard
 
 			// TODO: логируем ошибку.
 		}
+		#region Disposing
+		bool disposed = false;
+		protected virtual void Dispose(bool disposing)
+		{
+			if (disposed)
+			{
+				return;
+			}
+
+			ReturnExclusiveAccess();
+			// TODO: оно здесь действительно нужно? 
+			// т.к. доступ к запросу эксклюзивного контроля имеется только у private методов
+			// а они, гарантировано, будут его возвращать т.к. токен доступа будет собран раньше чем этот класс.
+			disposed = true;
+		}
 		public void Dispose()
 		{
-			// TODO: проверить есть ли подписка.
-			ReturnExclusiveAccess();
+			Dispose(true);
+			GC.SuppressFinalize(this);
 		}
+		~Win32Clipboard()
+			=> Dispose(false);
+		#endregion
 
 
 
