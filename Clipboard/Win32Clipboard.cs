@@ -1,4 +1,5 @@
-﻿using Clipboard.Native;
+﻿using Clipboard.Exceptions;
+using Clipboard.Native;
 using Clipboard.Native.Memory;
 
 namespace Clipboard
@@ -13,137 +14,80 @@ namespace Clipboard
 			this.clipboardWindow = clipboardWindow;
 		}
 
-		internal bool TrySetClipboardData(uint format, GlobalHandle handle)
+		internal void SetClipboardData(uint format, GlobalHandle handle)
 		{
-			if(!GetExclusiveAccess(out var token))
-			{
-				return false;
-			}
-
-			bool dataSuccessfullySet;
-			using (token)
-			{
-				if (!UnsafeTryToClearClipboard())
-				{
-					dataSuccessfullySet = false;
-				}
-				else
-				{
-					dataSuccessfullySet = UnsafeTrySetClipboardData(format, handle);
-				}
-			}
-
-			return dataSuccessfullySet;
+			SetClipboardData(new[] { (format, handle) });
 		}
-		internal bool TrySetClipboardData((uint format, GlobalHandle handle)[] dataset)
+		internal void SetClipboardData((uint format, GlobalHandle handle)[] dataset)
 		{
-			if (!GetExclusiveAccess(out var token))
+			using (var accessToken = GetExclusiveAccess())
 			{
-				return false;
-			}
+				LocalClearClipboard(accessToken);
 
-			bool dataSuccessfullySet;
-			using (token)
-			{
-				if (!UnsafeTryToClearClipboard())
+				foreach (var data in dataset)
 				{
-					dataSuccessfullySet = false;
-				}
-				else
-				{
-					dataSuccessfullySet = false;
-					foreach (var data in dataset)
-					{
-						dataSuccessfullySet = UnsafeTrySetClipboardData(data.format, data.handle);
-					}
+					LocalSetClipboardData(accessToken, data.format, data.handle);
 				}
 			}
-
-			return dataSuccessfullySet;
 		}
-		bool UnsafeTrySetClipboardData(uint format, GlobalHandle handle)
+		void LocalSetClipboardData(ClipboardExclusiveAccessToken token, uint format, GlobalHandle handle)
 		{
 			const int RetryCount = 5;
 
 			var currentTry = 0;
-			bool dataSuccessfullySet = NativeMethodsWrapper.TrySetClipboardData(format, handle.Pointer, out var errorCode);
-			while (!dataSuccessfullySet)
+			while (!NativeMethodsWrapper.TrySetClipboardData(format, handle.Pointer, out var errorCode))
 			{
-				HandleError(errorCode, out bool errorHandled, out bool expectedError);
-				RecordError(errorCode.Value, errorHandled, expectedError);
+				HandleError(errorCode.Value);
 
 				bool callsLimitReached = ++currentTry == RetryCount;
-				if (errorHandled is false ||
-					callsLimitReached)
+				if (callsLimitReached)
 				{
-					break;
+					throw new CallsLimitException(RetryCount);
 				}
-
-				dataSuccessfullySet = NativeMethodsWrapper.TryToClearClipboard(out errorCode);
 			}
-			return dataSuccessfullySet;
 
-			void HandleError(int? errorCode, out bool errorHandled, out bool expectedError)
+			void HandleError(int errorCode)
 			{
-				errorHandled = true;
-				expectedError = true;
 				switch (errorCode) // TODO: собрать данные о возможноых ошибках.
 				{
+					case NativeErrorsHelper.ERROR_CLIPBOARD_NOT_OPEN:
+						// Метод был вызван без предварительного открытия буфера обмена.
+						// Такого быть не должно так как этот аспект должен быть явно указан.
+						throw new AssertException("При вызове метода который требует получение эксклюзивного доступа не был получен эксклюзивный доступ.");
 					default:
-						errorHandled = false;
-						expectedError = false;
-						break;
+						throw new UnhandledNativeErrorException(NativeErrorsHelper.CreateNativeErrorFromCode(errorCode), $"Attempted format to set in clipboard: {format}");
 				}
 			}
 		}
-		internal bool TryGetClipboardData(uint formatId, out GlobalHandle? globalHandle)
+		internal GlobalHandle GetClipboardData(uint formatId)
 		{
-			bool accessGranted = GetExclusiveAccess(out var access);
-			if (!accessGranted)
-			{
-				globalHandle = null;
-				return false;
-			}
-
-			bool dataRetreived;
-			using (access)
+			using (GetExclusiveAccess())
 			{
 				const int RetryCount = 5;
 
 				int currentTry = 0;
-				dataRetreived = NativeMethodsWrapper.TryToGetClipboardData(formatId, out var dataPtr, out var errorCode);
-				while (!dataRetreived)
+
+				IntPtr? dataPtr;
+				while (!NativeMethodsWrapper.TryToGetClipboardData(formatId, out dataPtr, out var errorCode))
 				{
-					HandleError(errorCode, out bool errorHandled, out bool expectedError);
-					RecordError(errorCode.Value, errorHandled, expectedError);
+					HandleError(errorCode.Value);
 
 					bool callsLimitReached = ++currentTry < RetryCount;
-					if (errorHandled is false ||
-						callsLimitReached)
+					if (callsLimitReached)
 					{
-						break;
+						throw new CallsLimitException(RetryCount);
 					}
-
-					dataRetreived = NativeMethodsWrapper.TryToGetClipboardData(formatId, out dataPtr, out errorCode);
 				}
 
-				globalHandle = dataRetreived 
-							? new GlobalHandle() { Pointer = dataPtr.Value } 
-							: null;
+				return new GlobalHandle() { Pointer = dataPtr.Value };
 			}
 
-			return dataRetreived;
-
-			void HandleError(int? errorCode, out bool errorHandled, out bool expectedError)
+			void HandleError(int errorCode)
 			{
-				errorHandled = true;
-				expectedError = true;
 				switch (errorCode) // TODO: собрать данные о потенциальных ошибках.
 				{
 					default:
-						errorHandled = false;
-						expectedError = false;
-						break;
+						throw new UnhandledNativeErrorException(NativeErrorsHelper.CreateNativeErrorFromCode(errorCode), $"Requested data format was: {formatId}");
 				}
 			}
 		}
@@ -157,14 +101,7 @@ namespace Clipboard
 		{
 			const int DefaultFormatId = 0; // https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumclipboardformats#parameters
 
-			var accessGranted = GetExclusiveAccess(out var accessToken);
-			if (!accessGranted)
-			{
-				yield break;
-				// Ну и що тут делать?
-			}
-
-			using (accessToken)
+			using (GetExclusiveAccess())
 			{
 				uint currentFormatId = DefaultFormatId;
 
@@ -184,13 +121,10 @@ namespace Clipboard
 					bool errorOccured = !nextFormatRetreived && errorCode is not null;
 					if (errorOccured)
 					{
-						HandleError(errorCode.Value, out var errorHandled, out var errorExpected);
-						RecordError(errorCode.Value, errorHandled, errorExpected);
-
-						if (!errorHandled)
-						{
-							break;
-						}
+						HandleError(errorCode.Value);
+						// Ошибка обработана, ничего не меняя делаем тот же самый запрос.
+						// TODO: необходимо сделать ограничитель на количество попыток.
+						continue;
 					}
 					else
 					{
@@ -204,137 +138,98 @@ namespace Clipboard
 				yield break;
 			}
 
-			void HandleError(int? errorCode, out bool errorHandled, out bool expectedError)
+			void HandleError(int errorCode)
 			{
-				errorHandled = true;
-				expectedError = true;
 				switch (errorCode) // TODO: собрать данные о потенциальных ошибках.
 				{
 					default:
-						errorHandled = false;
-						expectedError = false;
-						break;
+						throw new UnhandledNativeErrorException(NativeErrorsHelper.CreateNativeErrorFromCode(errorCode));
 				}
 			}
 		}
-		internal bool TryGetClipboardFormatsCount(out int? formatsCount)
+		internal int GetClipboardFormatsCount()
 		{
 			const int RetryCount = 5;
 
 			int currentTry = 0;
-			bool formatsCounted = NativeMethodsWrapper.TryToCountPresentedFormats(out formatsCount, out int? errorCode);
-			while (!formatsCounted)
+			int? formatsCount;
+			while (!NativeMethodsWrapper.TryToCountPresentedFormats(out formatsCount, out int? errorCode))
 			{
-				HandleError(errorCode, out bool errorHandled, out bool expectedError);
-				RecordError(errorCode.Value, errorHandled, expectedError);
+				HandleError(errorCode.Value);
 
 				bool callsLimitReached = ++currentTry < RetryCount;
-				if (errorHandled is false ||
-					callsLimitReached)
+				if (callsLimitReached)
 				{
-					break;
+					throw new CallsLimitException(RetryCount);
 				}
-
-				formatsCounted = NativeMethodsWrapper.TryToCountPresentedFormats(out formatsCount, out errorCode);
 			}
 
-			return formatsCounted;
+			return formatsCount.Value;
 
-			void HandleError(int? errorCode, out bool errorHandled, out bool expectedError)
+			void HandleError(int errorCode)
 			{
-				errorHandled = true;
-				expectedError = true;
 				switch (errorCode) // TODO: собрать данные о потенциальных ошибках.
 				{
 					default:
-						errorHandled = false;
-						expectedError = false;
-						break;
+						throw new UnhandledNativeErrorException(NativeErrorsHelper.CreateNativeErrorFromCode(errorCode));
 				}
 			}
 		}
-		internal bool TryClearClipboard()
+		internal void ClearClipboard()
 		{
-			bool accessGranted = GetExclusiveAccess(out var access);
-			if (!accessGranted)
+			using (var access = GetExclusiveAccess())
 			{
-				return false;
+				LocalClearClipboard(access);
 			}
-
-			bool clipboardCleared;
-			using (access)
-			{
-				clipboardCleared = UnsafeTryToClearClipboard();
-			}
-
-			return clipboardCleared;
 		}
 
-		bool UnsafeTryToClearClipboard()
+		void LocalClearClipboard(ClipboardExclusiveAccessToken token)
 		{
 			const int RetryCount = 5;
 
 			var currentTry = 0;
-			bool clipboardCleared = NativeMethodsWrapper.TryToClearClipboard(out var errorCode);
-			while (!clipboardCleared)
+			while (!NativeMethodsWrapper.TryToClearClipboard(out var errorCode))
 			{
-				HandleError(errorCode, out bool errorHandled, out bool expectedError);
-				RecordError(errorCode.Value, errorHandled, expectedError);
+				HandleError(errorCode.Value);
 
 				bool callsLimitReached = ++currentTry == RetryCount;
-				if (errorHandled is false ||
-					callsLimitReached)
+				if (callsLimitReached)
 				{
-					break;
+					throw new CallsLimitException(RetryCount);
 				}
-
-				clipboardCleared = NativeMethodsWrapper.TryToClearClipboard(out errorCode);
 			}
-			return clipboardCleared;
 
-			void HandleError(int? errorCode, out bool errorHandled, out bool expectedError)
+			void HandleError(int errorCode)
 			{
-				errorHandled = true;
-				expectedError = true;
 				switch (errorCode) // TODO: собрать данные о возможноых ошибках.
 				{
 					default:
-						errorHandled = false;
-						expectedError = false;
-						break;
+						throw new UnhandledNativeErrorException(NativeErrorsHelper.CreateNativeErrorFromCode(errorCode));
 				}
 			}
 		}
-		bool GetExclusiveAccess(out ClipboardExclusiveAccessToken? accessToken)
+		ClipboardExclusiveAccessToken GetExclusiveAccess()
 		{
 			const int RetryCount = 5;
 
 			int currentTry = 0;
-			bool controlGranted = NativeMethodsWrapper.TryToGetExclusiveClipboardControl(clipboardWindow.Handle, out int? errorCode);
-			while (!controlGranted)
+			while (!NativeMethodsWrapper.TryToGetExclusiveClipboardControl(clipboardWindow.Handle, out int? errorCode))
 			{
-				HandleError(errorCode, out bool errorHandled, out bool expectedError);
-				RecordError(errorCode.Value, errorHandled, expectedError);
+				HandleError(errorCode.Value);
 
 				bool callsLimitReached = ++currentTry < RetryCount;
-				if (errorHandled is false ||
-					callsLimitReached)
+				if (callsLimitReached)
 				{
-					break;
+					throw new CallsLimitException(RetryCount);
 				}
-
-				controlGranted = NativeMethodsWrapper.TryToGetExclusiveClipboardControl(clipboardWindow.Handle, out errorCode);
 			}
-			accessToken = controlGranted
-						? new ClipboardExclusiveAccessToken(this)
-						: null;
 
-			return controlGranted;
+			return new ClipboardExclusiveAccessToken(this);
 
-			void HandleError(int? errorCode, out bool errorHandled, out bool expectedError)
+
+
+			void HandleError(int errorCode)
 			{
-				errorHandled = true;
-				expectedError = true;
 				switch (errorCode) // TODO: собрать данные о потенциальных ошибках
 				{
 					case NativeErrorsHelper.ERROR_ACCESS_DENIED:
@@ -343,13 +238,11 @@ namespace Clipboard
 						Thread.Sleep(100); // TODO: время ожидания.
 						break;
 					default:
-						errorHandled = false;
-						expectedError = false;
-						break;
+						throw new UnhandledNativeErrorException(NativeErrorsHelper.CreateNativeErrorFromCode(errorCode));
 				}
 			}
 		}
-		bool ReturnExclusiveAccess()
+		void ReturnExclusiveAccess()
 		{
 			const int RetryCount = 5;
 
@@ -357,33 +250,29 @@ namespace Clipboard
 			bool controlReturned = NativeMethodsWrapper.TryToReturnExclusiveClipboardControl(out int? errorCode);
 			while (!controlReturned)
 			{
-				HandleError(errorCode, out bool errorHandled, out bool expectedError);
-				RecordError(errorCode.Value, errorHandled, expectedError);
-
-				bool callsLimitReached = ++currentTry < RetryCount;
-				if (errorHandled is false ||
-					callsLimitReached)
-				{
-					break;
-				}
+				HandleError(errorCode.Value);
 
 				if (controlReturned)
 				{
-					// Некоторые ошибки можно трактовать как положительный результат оп=ерации.
+					// Некоторые ошибки можно трактовать как положительный результат операции.
 					// Допустим при ошибке гласящей о том, что контроль не был получен
 					// пытаться возвращать контроль ещё раз не имеет никого смысла.
 					break;
 				}
 
+				bool callsLimitReached = ++currentTry < RetryCount;
+				if (callsLimitReached)
+				{
+					throw new CallsLimitException(RetryCount);
+				}
+
 				controlReturned = NativeMethodsWrapper.TryToReturnExclusiveClipboardControl(out errorCode);
 			}
 
-			return controlReturned;
 
-			void HandleError(int? errorCode, out bool errorHandled, out bool expectedError)
+
+			void HandleError(int errorCode)
 			{
-				errorHandled = true;
-				expectedError = true;
 				switch (errorCode) // TODO: собрать информацию о возможных ошибках.
 				{
 					case NativeErrorsHelper.ERROR_CLIPBOARD_NOT_OPEN:
@@ -393,25 +282,9 @@ namespace Clipboard
 						controlReturned = true;
 						break;
 					default:
-						errorHandled = false;
-						expectedError = false;
-						break;
+						throw new UnhandledNativeErrorException(NativeErrorsHelper.CreateNativeErrorFromCode(errorCode));
 				}
 			}
-		}
-		void RecordError(int code, bool handled, bool expected)
-		{
-			var error = NativeErrorsHelper.CreateNativeErrorFromCode(code);
-			if (!handled)
-			{
-				error.Attributes |= NativeError.ErrorAttributes.UnHandled;
-			}
-			if (!expected)
-			{
-				error.Attributes |= NativeError.ErrorAttributes.UnExpected;
-			}
-
-			// TODO: логируем ошибку.
 		}
 		#region Disposing
 		bool disposed = false;

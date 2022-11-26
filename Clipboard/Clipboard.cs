@@ -73,13 +73,9 @@ namespace Clipboard
 				return;
 			}
 
-			if (!systemClipboard.TryGetClipboardData(formatToBeHanled.Value, out var dataGHandle))
-			{
-				// Вызвать событие о происшествии ошибки или просто логировать?
-				return;
-			}
+			var dataGHandle = systemClipboard.GetClipboardData(formatToBeHanled.Value);
 
-			var dataCopy = NativeMemoryManager.CopyUnmanagedFromGHandle(dataGHandle.Value);
+			var dataCopy = NativeMemoryManager.CopyUnmanagedFromGHandle(dataGHandle);
 
 			if (duplicationPreventer.IsDuplicate(dataCopy))
 			{
@@ -238,7 +234,7 @@ namespace Clipboard
 			// текст в несколько разных форматов. 
 			// В данном случае она автоматически конвертирует Unicode текст
 			// в 4 формата: 13, 16, 1, 7
-			systemClipboard.TrySetClipboardData(dataSet);
+			systemClipboard.SetClipboardData(dataSet);
 
 			GlobalHandle CreateUnicodeHandle()
 			{
@@ -304,10 +300,7 @@ namespace Clipboard
 
 		public void ClearClipboard()
 		{
-			if (!systemClipboard.TryClearClipboard())
-			{
-				//TODO: Вызвать событие о происшествии ошибки или просто логировать?
-			}
+			systemClipboard.ClearClipboard();
 		}
 
 		static void VerifyParameterIsNotNull<T>(T paramValue, string paramName)
