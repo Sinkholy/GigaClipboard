@@ -1,13 +1,13 @@
 ﻿namespace Clipboard.Native
 {
-	internal class NativeError
+	public class NativeError
 	{
-		internal int Code { get; init; }
-		internal string? Description { get; init; }
-		internal ErrorAttributes Attributes { get; set; }
+		public int Code { get; init; }
+		public string? Description { get; init; }
+		public ErrorAttributes Attributes { get; set; }
 
 		[Flags]
-		internal enum ErrorAttributes : byte
+		public enum ErrorAttributes : byte
 		{
 			None = 0, // CA1008: Enums should have zero value.
 			UnDocumented = 1,
