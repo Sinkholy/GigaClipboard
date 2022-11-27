@@ -147,6 +147,41 @@ namespace Clipboard
 				}
 			}
 		}
+		internal uint[] GetFormats()
+		{
+			uint[] formats = new uint[GetClipboardFormatsCount()];
+			// TODO: Здесь возможно потребуется закрепить (pin) массив для оптимизации.
+			// TODO: лучше сделать это непосредственно в NMW.
+			// https://learn.microsoft.com/en-us/dotnet/framework/interop/copying-and-pinning?source=recommendations
+			int currentTry = 0;
+			while (!NativeMethodsWrapper.TryGetUpdatedClipboardFormats(formats, formats.Length, out _, out var errorCode))
+			{
+				const int RetryCount = 5;
+
+				HandleError(errorCode.Value);
+
+				bool callsLimitReached = ++currentTry < RetryCount;
+				if (callsLimitReached)
+				{
+					throw new CallsLimitException(RetryCount);
+				}
+			}
+
+			return formats;
+
+			void HandleError(int errorCode)
+			{
+				switch (errorCode) // TODO: собрать данные о потенциальных ошибках.
+				{
+					default:
+						throw new UnhandledNativeErrorException(NativeErrorsHelper.CreateNativeErrorFromCode(errorCode));
+				}
+			}
+		}
+		internal bool IsFormatAvailable(uint formadId)
+		{
+			return NativeMethodsWrapper.IsClipboardFormatAvailable(formadId, out _);
+		}
 		internal int GetClipboardFormatsCount()
 		{
 			const int RetryCount = 5;

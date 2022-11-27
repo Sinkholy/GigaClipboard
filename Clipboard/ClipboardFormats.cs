@@ -5,49 +5,17 @@ namespace Clipboard
 {
 	internal class ClipboardFormats
 	{
-		internal static uint[] GetAvailableClipboardFormats()
+		internal static string[] GetFormatsNames(uint[] formatsIds)
 		{
-			uint[] formats = new uint[GetFormatsCount()];
-			// TODO: Здесь возможно потребуется закрепить (pin) массив для оптимизации.
-			// TODO: лучше сделать это непосредственно в NMW.
-			// https://learn.microsoft.com/en-us/dotnet/framework/interop/copying-and-pinning?source=recommendations
-			int currentTry = 0;
-			while (!NativeMethodsWrapper.TryGetUpdatedClipboardFormats(formats, formats.Length, out _, out var errorCode))
+			string[] formats = new string[formatsIds.Length];
+
+			for (int i = 0; i < formats.Length; i++)
 			{
-				const int RetryCount = 5;
-
-				HandleError(errorCode.Value);
-
-				bool callsLimitReached = ++currentTry < RetryCount;
-				if (callsLimitReached)
-				{
-					throw new CallsLimitException(RetryCount);
-				}
+				var formatId = formatsIds[i];
+				formats[i] = GetFormatName(formatId);
 			}
 
 			return formats;
-
-
-
-			int GetFormatsCount()
-			{
-				// TODO: посмотреть метод к переработке.
-				const int DefaultFormatsCount = 30;
-
-				var formatsCounted = NativeMethodsWrapper.TryToCountPresentedFormats(out int? formatsCount, out var errorCode);
-
-				return formatsCounted
-					? formatsCount.Value
-					: DefaultFormatsCount;
-			}
-			void HandleError(int errorCode)
-			{
-				switch (errorCode) // TODO: собрать данные о потенциальных ошибках.
-				{
-					default:
-						throw new UnhandledNativeErrorException(NativeErrorsHelper.CreateNativeErrorFromCode(errorCode));
-				}
-			}
 		}
 		internal static string GetFormatName(uint formatId)
 		{
@@ -57,7 +25,7 @@ namespace Clipboard
 			// Здесь проверяется является ли формат предпоределенным системой.
 			if (IsPredefinedFormat(formatId))
 			{
-				return PredefinedFormats.GetFormatName(formatId);
+				return PredefinedFormats.GetFormat(formatId);
 			}
 			else
 			{
@@ -137,8 +105,12 @@ namespace Clipboard
 			{
 				return SystemPredefinedClipboardFormats.Values.Contains(formatName);
 			}
-
-			internal static string GetFormatName(uint formatId)
+			
+			internal static uint GetFormat(string formatName)
+			{
+				return SystemPredefinedClipboardFormats.Single(kvp => kvp.Value.Contains(formatName)).Key;
+			}
+			internal static string GetFormat(uint formatId)
 			{
 				return SystemPredefinedClipboardFormats[formatId];
 			}

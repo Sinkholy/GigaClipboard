@@ -91,7 +91,7 @@ namespace Clipboard
 
 			bool DataWasSetByThisClipboard()
 			{
-				return NativeMethodsWrapper.IsClipboardFormatAvailable(formatsToHandle.PredefinedFormat, out _);
+				return systemClipboard.IsFormatAvailable(formatsToHandle.PredefinedFormat);
 			}
 			ClipboardData HandleClipboardData(uint format, NativeMemoryManager.NativeMemorySegment memory)
 			{
