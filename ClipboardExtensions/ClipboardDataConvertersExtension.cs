@@ -173,10 +173,10 @@ namespace CipboardDataExtensions
 
 					headerSize = binaryReader.ReadUInt32();
 
-					binaryReader.BaseStream.Position += ImageSizeOffset;
+					binaryReader.BaseStream.Position = ImageSizeOffset;
 					imageSize = binaryReader.ReadUInt32();
 
-					binaryReader.BaseStream.Position += ImageClrUsedOffset;
+					binaryReader.BaseStream.Position = ImageClrUsedOffset;
 					imageClrUsed = binaryReader.ReadUInt32();
 				}
 
