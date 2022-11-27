@@ -14,23 +14,23 @@ namespace Clipboard
 			this.clipboardWindow = clipboardWindow;
 		}
 
-		internal void SetClipboardData(uint format, GlobalHandle handle)
+		internal void SetData(uint format, GlobalHandle handle)
 		{
-			SetClipboardData(new[] { (format, handle) });
+			SetData(new[] { (format, handle) });
 		}
-		internal void SetClipboardData((uint format, GlobalHandle handle)[] dataset)
+		internal void SetData((uint format, GlobalHandle handle)[] dataset)
 		{
 			using (var accessToken = GetExclusiveAccess())
 			{
-				LocalClearClipboard(accessToken);
+				LocalClear(accessToken);
 
 				foreach (var data in dataset)
 				{
-					LocalSetClipboardData(accessToken, data.format, data.handle);
+					LocalSetData(accessToken, data.format, data.handle);
 				}
 			}
 		}
-		void LocalSetClipboardData(ClipboardExclusiveAccessToken token, uint format, GlobalHandle handle)
+		void LocalSetData(ClipboardExclusiveAccessToken token, uint format, GlobalHandle handle)
 		{
 			const int RetryCount = 5;
 
@@ -59,7 +59,7 @@ namespace Clipboard
 				}
 			}
 		}
-		internal GlobalHandle GetClipboardData(uint formatId)
+		internal GlobalHandle GetData(uint formatId)
 		{
 			using (GetExclusiveAccess())
 			{
@@ -97,7 +97,7 @@ namespace Clipboard
 		/// </summary>
 		/// <returns>Коллекцию имён форматов в которых представленны данные в системном буфере обмена.</returns>
 		/// <exception cref="ExclusiveControlException">Если не удалось получить или вернуть эксклюзивный доступ к системному буферу обмена.</exception>
-		internal IEnumerable<uint> EnumerateDataFormats()
+		internal IEnumerable<uint> EnumerateFormats()
 		{
 			const int DefaultFormatId = 0; // https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumclipboardformats#parameters
 
@@ -149,7 +149,7 @@ namespace Clipboard
 		}
 		internal uint[] GetFormats()
 		{
-			uint[] formats = new uint[GetClipboardFormatsCount()];
+			uint[] formats = new uint[GetFormatsCount()];
 			// TODO: Здесь возможно потребуется закрепить (pin) массив для оптимизации.
 			// TODO: лучше сделать это непосредственно в NMW.
 			// https://learn.microsoft.com/en-us/dotnet/framework/interop/copying-and-pinning?source=recommendations
@@ -182,7 +182,7 @@ namespace Clipboard
 		{
 			return NativeMethodsWrapper.IsClipboardFormatAvailable(formadId, out _);
 		}
-		internal int GetClipboardFormatsCount()
+		internal int GetFormatsCount()
 		{
 			const int RetryCount = 5;
 
@@ -210,15 +210,15 @@ namespace Clipboard
 				}
 			}
 		}
-		internal void ClearClipboard()
+		internal void Clear()
 		{
 			using (var access = GetExclusiveAccess())
 			{
-				LocalClearClipboard(access);
+				LocalClear(access);
 			}
 		}
 
-		void LocalClearClipboard(ClipboardExclusiveAccessToken token)
+		void LocalClear(ClipboardExclusiveAccessToken token)
 		{
 			const int RetryCount = 5;
 

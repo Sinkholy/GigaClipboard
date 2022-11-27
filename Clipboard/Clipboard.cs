@@ -73,7 +73,7 @@ namespace Clipboard
 				return;
 			}
 
-			var dataGHandle = systemClipboard.GetClipboardData(formatToBeHanled.Value);
+			var dataGHandle = systemClipboard.GetData(formatToBeHanled.Value);
 
 			var dataCopy = NativeMemoryManager.CopyUnmanagedFromGHandle(dataGHandle);
 
@@ -167,7 +167,7 @@ namespace Clipboard
 					uint GetFilesCount(IntPtr memPtr)
 					{
 						return DragQueryFile(memPtr, -1, null, 0);
-					}					
+					}
 					[DllImport("Shell32.dll", SetLastError = true)]
 					static extern uint DragQueryFile(IntPtr hMem, int iFile, [Out] byte[] buffer, int bufferSize);
 				}
@@ -234,7 +234,7 @@ namespace Clipboard
 			// текст в несколько разных форматов. 
 			// В данном случае она автоматически конвертирует Unicode текст
 			// в 4 формата: 13, 16, 1, 7
-			systemClipboard.SetClipboardData(dataSet);
+			systemClipboard.SetData(dataSet);
 
 			GlobalHandle CreateUnicodeHandle()
 			{
@@ -300,7 +300,7 @@ namespace Clipboard
 
 		public void ClearClipboard()
 		{
-			systemClipboard.ClearClipboard();
+			systemClipboard.Clear();
 		}
 
 		static void VerifyParameterIsNotNull<T>(T paramValue, string paramName)
