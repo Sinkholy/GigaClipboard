@@ -22,7 +22,8 @@ namespace CipboardDataExtensions
 					var needToGenerateFileHeader = !containsFileHeader;
 					if (needToGenerateFileHeader)
 					{
-						var fileHeader = BitmapHelper.GenerateFileHeader(bitmapBinaryData);
+						var bitmapHeader = BitmapHelper.ExtractBitmapHeader(bitmapBinaryData);
+						var fileHeader = BitmapHelper.GenerateFileHeader(bitmapHeader);
 						bitmapBinaryData = BitmapHelper.AppendFileHeaderToDIB(bitmapBinaryData, fileHeader);
 					}
 
@@ -83,102 +84,57 @@ namespace CipboardDataExtensions
 				// Следовательно мы читаем первые два байта битовой последовательности
 				// Преобразуем их в UInt16 и сверяемся с константным числом идентифицирующим 
 				// структуру BitmapFileHeader.
-				ushort fileType = BitConverter.ToUInt16(new ReadOnlySpan<byte>(dibBinaryData, 0, 2));
+				ushort fileType = BitConverter.ToUInt16(dibBinaryData, 0);
 				return fileType == BitmapFileHeader.BM;
 			}
 			internal static bool ContainsInfoHeader(byte[] dibBinaryData, bool binaryDataContainsFileHeader)
 			{
-				// TODO: распихай всё по константам.
-				var span = binaryDataContainsFileHeader
-						 ? new ReadOnlySpan<byte>(dibBinaryData, FileHeaderSizeBytes, 4)
-						 : new ReadOnlySpan<byte>(dibBinaryData, 0, 4);
-
-				uint headerSize = BitConverter.ToUInt32(span);
+				int offset = binaryDataContainsFileHeader 
+							? FileHeaderSizeBytes 
+							: 0;
+				uint headerSize = BitConverter.ToUInt32(dibBinaryData, offset);
 				return headerSize is BitmapInfoHeaderSize
 								  or BitmapV5HeaderSize;
 			}
-			internal static BitmapFileHeader GenerateFileHeader(byte[] dibBinaryData)
+			internal static BitmapFileHeader GenerateFileHeader(BitmapHeader bitmapHeader)
 			{
-				if (ContainsFileHeader(dibBinaryData))
+				return new BitmapFileHeader
 				{
-					return ExtractFileHeader(dibBinaryData);
-				}
-				else
-				{
-					var bitmapHeader = ExtractBitmapHeader(dibBinaryData, false);
-					var fileSize = FileHeaderSizeBytes + bitmapHeader.HeaderSizeBytes + bitmapHeader.ImageSizeBytes;
-					var imageOffsetInFile = FileHeaderSizeBytes + bitmapHeader.HeaderSizeBytes + (bitmapHeader.BitmapClrUsed * 4);
-
-					return new BitmapFileHeader
-					{
-						FileType = BitmapFileHeader.BM,
-						FileSizeBytes = fileSize,
-						FileReserved1 = 0,
-						FileReserved2 = 0,
-						BitmapBitsOffsetInBytes = imageOffsetInFile
-					};
-				}
+					FileType = BitmapFileHeader.BM,
+					FileSizeBytes = FileHeaderSizeBytes + bitmapHeader.HeaderSizeBytes + bitmapHeader.ImageSizeBytes,
+					FileReserved1 = 0,
+					FileReserved2 = 0,
+					BitmapBitsOffsetInBytes = FileHeaderSizeBytes + bitmapHeader.HeaderSizeBytes + (bitmapHeader.BitmapClrUsed * 4)
+				};
 			}
 			internal static BitmapFileHeader ExtractFileHeader(byte[] dibBinaryData)
 			{
-				return ExtractFileHeader(new MemoryStream(dibBinaryData));
-			}
-			internal static BitmapFileHeader ExtractFileHeader(MemoryStream dibBinaryStream)
-			{
-				UInt16 fileType;
-				UInt32 fileSizeBytes;
-				UInt16 fileReserved1;
-				UInt16 fileReserved2;
-				UInt32 bitmapBitsOffsetInBytes;
-
-				using (var binaryReader = new BinaryReader(dibBinaryStream))
+				// Здесь я использую BinaryReader т.к. нужно прочитать много
+				// ПОСЛЕДОВАТЕЛЬНЫХ данных и куда проще инициализировать BinaryReader нежели
+				// каждый раз выставлять оффсеты в, допустим, BitConverter.
+				using (var binaryReader = new BinaryReader(new MemoryStream(dibBinaryData)))
 				{
-					fileType = binaryReader.ReadUInt16();
-					fileSizeBytes = binaryReader.ReadUInt32();
-					fileReserved1 = binaryReader.ReadUInt16();
-					fileReserved2 = binaryReader.ReadUInt16();
-					bitmapBitsOffsetInBytes = binaryReader.ReadUInt32();
-				}
+					var fileType = binaryReader.ReadUInt16();
+					var fileSizeBytes = binaryReader.ReadUInt32();
+					var fileReserved1 = binaryReader.ReadUInt16();
+					var fileReserved2 = binaryReader.ReadUInt16();
+					var bitmapBitsOffsetInBytes = binaryReader.ReadUInt32();
 
-				return new BitmapFileHeader()
-				{
-					FileType = fileType,
-					FileSizeBytes = fileSizeBytes,
-					BitmapBitsOffsetInBytes = bitmapBitsOffsetInBytes,
-					FileReserved1 = fileReserved1,
-					FileReserved2 = fileReserved2
-				};
-			}
-			internal static BitmapHeader ExtractBitmapHeader(byte[] dibBinaryData, bool containsFileHeader)
-			{
-				return ExtractBitmapHeader(new MemoryStream(dibBinaryData), containsFileHeader);
-			}
-			internal static BitmapHeader ExtractBitmapHeader(MemoryStream dibBinaryStream, bool containsFileHeader)
-			{
-				const long ImageSizeOffset = 20;
-				const long ImageClrUsedOffset = 32;
-
-				// TODO: в этом методе требуется либо дописать детальный комментарий
-				// либо переделать всё с использованием BitConverter
-				uint headerSize;
-				uint imageSize;
-				uint imageClrUsed;
-
-				using (var binaryReader = new BinaryReader(dibBinaryStream))
-				{
-					if (containsFileHeader)
+					return new BitmapFileHeader()
 					{
-						binaryReader.BaseStream.Position = FileHeaderSizeBytes;
-					}
-
-					headerSize = binaryReader.ReadUInt32();
-
-					binaryReader.BaseStream.Position = ImageSizeOffset;
-					imageSize = binaryReader.ReadUInt32();
-
-					binaryReader.BaseStream.Position = ImageClrUsedOffset;
-					imageClrUsed = binaryReader.ReadUInt32();
+						FileType = fileType,
+						FileSizeBytes = fileSizeBytes,
+						BitmapBitsOffsetInBytes = bitmapBitsOffsetInBytes,
+						FileReserved1 = fileReserved1,
+						FileReserved2 = fileReserved2
+					};
 				}
+			}
+			internal static BitmapHeader ExtractBitmapHeader(byte[] dibBinaryData)
+			{
+				uint headerSize = BitConverter.ToUInt32(dibBinaryData, BitmapHeader.HeaderSizeOffset);
+				uint imageSize = BitConverter.ToUInt32(dibBinaryData, BitmapHeader.ImageSizeOffset);
+				uint imageClrUsed = BitConverter.ToUInt32(dibBinaryData, BitmapHeader.BitmapClrUsedOffset);
 
 				return new BitmapHeader()
 				{
@@ -229,9 +185,13 @@ namespace CipboardDataExtensions
 			[StructLayout(LayoutKind.Explicit)]
 			internal struct BitmapHeader
 			{
-				[FieldOffset(0)] public UInt32 HeaderSizeBytes;
-				[FieldOffset(20)] public UInt32 ImageSizeBytes;
-				[FieldOffset(32)] public UInt32 BitmapClrUsed; // TODO: нейминг
+				internal const int HeaderSizeOffset = 0;
+				internal const int ImageSizeOffset = 20;
+				internal const int BitmapClrUsedOffset = 32;
+
+				[FieldOffset(HeaderSizeOffset)] public UInt32 HeaderSizeBytes;
+				[FieldOffset(ImageSizeOffset)] public UInt32 ImageSizeBytes;
+				[FieldOffset(BitmapClrUsedOffset)] public UInt32 BitmapClrUsed; // TODO: нейминг
 			}
 		}
 	}
