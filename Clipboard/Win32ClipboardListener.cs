@@ -1,4 +1,5 @@
 ﻿using Clipboard.Native;
+using Clipboard.Exceptions;
 
 namespace Clipboard
 {
@@ -16,7 +17,14 @@ namespace Clipboard
 			this.messagesReceiverWindow.NewWindowMessageReceived += OnNewWindowMessageReceived;
 
 			// Подписание окна-слушателя на получение необходимых сообщений.
-			var subscribed = SubscribeToClipboardUpdates(); // TODO: вынести в отдельный метод Start()? Это позволит безболезнено возвращать результат создания слушателя управляющей стороне. 
+			try
+			{
+				SubscribeToClipboardUpdates();
+			}
+			catch(ArgumentException ex)
+			{
+				throw new ArgumentException("Проблема с Win32 окном.", nameof(messagesReceiverWindow), ex);
+			}
 		}
 
 		internal event Action ClipboardUpdated = delegate { };
@@ -33,81 +41,65 @@ namespace Clipboard
 				ClipboardUpdated();
 			}
 		}
-		bool SubscribeToClipboardUpdates()
+		void SubscribeToClipboardUpdates()
 		{
 			const int RetryCount = 5;
 				
 			byte currentTry = 0;
-			bool subscribed = NativeMethodsWrapper.TryToSubscribeWindowToClipboardUpdates(messagesReceiverWindow.Handle, out int? errorCode);
-			while (!subscribed)
+			while (!NativeMethodsWrapper.TryToSubscribeWindowToClipboardUpdates(messagesReceiverWindow.Handle, out int? errorCode))
 			{
-				HandleError(errorCode, out bool errorHandled, out bool expectedError);
-				RecordError(errorCode.Value, errorHandled, expectedError);
+				HandleError(errorCode.Value);
 
 				bool callsLimitReached = ++currentTry == RetryCount;
-				if (errorHandled is false ||
-					callsLimitReached)
+				if (callsLimitReached)
 				{
-					break;
+					throw new CallsLimitException(RetryCount);
 				}
-
-				subscribed = NativeMethodsWrapper.TryToSubscribeWindowToClipboardUpdates(messagesReceiverWindow.Handle, out errorCode);
 			}
 
-			return subscribed;
 
-			void HandleError(int? errorCode, out bool errorHandled, out bool expectedError)
+
+			void HandleError(int errorCode)
 			{
-				errorHandled = true;
-				expectedError = true;
 				switch (errorCode)
 				{
 					case NativeErrorsHelper.ERROR_INVALID_PARAMETER:
 						// Эта ошибка возникает при попытке повторного подписания одного и того же окна на уведомления.
 						// Мне неизвестно может ли эта ошибка возникать в следствии других действий.
 
+						// TODO: здесь нужно подумотб.
 						// Такого происходить не должно, следовательно Assert?
 						break;
 					case NativeErrorsHelper.ERROR_INVALID_WINDOW_HANDLE:
-					// Эта ошибка возникала при попытке подписать на уведомления несуществующее окно.
-					// Мне неизвестно может ли эта ошибка возникать в следствии других действий.
+						// Эта ошибка возникала при попытке подписать на уведомления несуществующее окно.
+						// Мне неизвестно может ли эта ошибка возникать в следствии других действий.
 
-					// Попытаться его пересоздать или просто уведомить об исключении?
+						throw new ArgumentException();
 					default:
-						expectedError = false;
-						errorHandled = false;
-						break;
+						throw new UnhandledNativeErrorException(NativeErrorsHelper.CreateNativeErrorFromCode(errorCode));
 				}
 			}
 		}
-		bool UnsubscribeFromClipboardUpdates()
+		void UnsubscribeFromClipboardUpdates()
 		{
 			const int RetryCount = 5;
 
 			byte currentTry = 0;
-			bool unsubscribed = NativeMethodsWrapper.TryToUnsubscribeWindowFromClipboardUpdates(messagesReceiverWindow.Handle, out int? errorCode);
-			while (!unsubscribed)
+			while (!NativeMethodsWrapper.TryToUnsubscribeWindowFromClipboardUpdates(messagesReceiverWindow.Handle, out int? errorCode))
 			{
-
-				HandleError(errorCode, out bool errorHandled, out bool expectedError);
-				RecordError(errorCode.Value, errorHandled, expectedError);
+				HandleError(errorCode.Value);
 
 				bool callsLimitReached = ++currentTry == RetryCount;
-				if (errorHandled is false ||
-					callsLimitReached)
+				if (callsLimitReached)
 				{
-					break;
+					throw new CallsLimitException(RetryCount);
 				}
-
-				unsubscribed = NativeMethodsWrapper.TryToUnsubscribeWindowFromClipboardUpdates(messagesReceiverWindow.Handle, out errorCode);
 			}
 
-			return unsubscribed;
 
-			void HandleError(int? errorCode, out bool errorHandled, out bool expectedError)
+
+			void HandleError(int errorCode)
 			{
-				errorHandled = false;
-				expectedError = true;
 				switch (errorCode)
 				{
 					case NativeErrorsHelper.ERROR_INVALID_PARAMETER:
@@ -117,32 +109,15 @@ namespace Clipboard
 						// Такого происходить не должно, следовательно Assert?
 						break;
 					case NativeErrorsHelper.ERROR_INVALID_WINDOW_HANDLE:
-					// Эта ошибка возникала при попытке отписать от уведомлений несуществующее окно.
-					// Мне неизвестно может ли эта ошибка возникать в следствии других действий.
-
-					// Попытаться его пересоздать или просто уведомить об исключении?
+						// Эта ошибка возникала при попытке отписать от уведомлений несуществующее окно.
+						// Мне неизвестно может ли эта ошибка возникать в следствии других действий.
+						throw new AssertException($"Произошла попытка отписать от сообщений об изменении содержимого буфера несуществующее окно. " +
+												$"Оно должно было быть проверено при подписании. Window handle: {messagesReceiverWindow.Handle}");
 					default:
-						errorHandled = true;
-						expectedError = false;
-						break;
+						throw new UnhandledNativeErrorException(NativeErrorsHelper.CreateNativeErrorFromCode(errorCode));
 				}
 			}
 		}
-		void RecordError(int code, bool handled, bool expected)
-		{
-			var error = NativeErrorsHelper.CreateNativeErrorFromCode(code);
-			if (!handled)
-			{
-				error.Attributes |= NativeError.ErrorAttributes.UnHandled;
-			}
-			if (!expected)
-			{
-				error.Attributes |= NativeError.ErrorAttributes.UnExpected;
-			}
-
-			// TODO: логировать ошибку.
-		}
-
 		#region Disposing
 		bool disposed = false;
 		protected virtual void Dispose(bool disposing)
